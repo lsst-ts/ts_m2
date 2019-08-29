@@ -1,0 +1,11 @@
+$schema: http://json-schema.org/draft-07/schema#
+$id: https://github.com/lsst-ts/ts_m2/blob/master/schema/m2.yaml
+# title must end with one or more spaces followed by the schema version, which must begin with "v"
+title: M2 v1
+description: Schema for M2 configuration files
+type: object
+properties:
+  max_force:
+    description: Maximum force that can be applied in each actuator in Newton.
+    type: number
+    default: 10.
