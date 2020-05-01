@@ -9,16 +9,24 @@ class M2(salobj.ConfigurableCsc):
     """This is a test CSC for the M2 component with salobj.
     """
 
-    def __init__(self, config_dir=None, initial_state=salobj.State.STANDBY,
-                 simulation_mode=0):
-        schema_path = pathlib.Path(__file__).resolve().parents[4].joinpath("schema", "m2.yaml")
-        super().__init__("MTM2", index=0, schema_path=schema_path, config_dir=config_dir,
-                         initial_state=initial_state,
-                         simulation_mode=simulation_mode)
+    def __init__(
+        self, config_dir=None, initial_state=salobj.State.STANDBY, simulation_mode=0
+    ):
+        schema_path = (
+            pathlib.Path(__file__).resolve().parents[4].joinpath("schema", "m2.yaml")
+        )
+        super().__init__(
+            "MTM2",
+            index=0,
+            schema_path=schema_path,
+            config_dir=config_dir,
+            initial_state=initial_state,
+            simulation_mode=simulation_mode,
+        )
 
         self.telemetry_loop_task = None
         self.run_telemetry_loop = False
-        self.stop_loop_timeout = 5.
+        self.stop_loop_timeout = 5.0
 
         self.config = None
 
@@ -87,8 +95,9 @@ class M2(salobj.ConfigurableCsc):
 
         self.run_telemetry_loop = False
         try:
-            await asyncio.wait_for(self.telemetry_loop_task,
-                                   timeout=self.stop_loop_timeout)
+            await asyncio.wait_for(
+                self.telemetry_loop_task, timeout=self.stop_loop_timeout
+            )
         except asyncio.TimeoutError:
             self.log.debug("Timed out waiting for telemetry loop to finish. Canceling.")
             self.telemetry_loop_task.cancel()
