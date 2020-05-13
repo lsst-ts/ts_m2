@@ -1,33 +1,26 @@
-ARG image_tag=develop
-FROM lsstts/salobj:${image_tag}
+ARG deploy_tag=salobj_v5.7.0
 
-ARG m2_branch=develop
-ARG config_mttcs_branch=develop
+FROM lsstts/deploy-env:${deploy_tag}
 
-WORKDIR /home/saluser/repos/
+LABEL maintainer Tiago Ribeiro <tribeiro@lsst.org>
 
-RUN git clone https://github.com/lsst-ts/ts_config_mttcs.git && \
-    git clone https://github.com/lsst-ts/ts_m2.git
+ARG m2=0.1.dev9+geb50cc5
+ARG idl=1.1.3_4.8.0
+ARG config=v0.2.0
 
-WORKDIR /home/saluser/repos/ts_config_mttcs
+RUN source /home/saluser/.setup.sh && \
+    conda install -c lsstts ts-m2=${m2} ts-idl=${idl}
 
-RUN source /opt/lsst/software/stack/loadLSST.bash && \
-    source /home/saluser/repos/ts_sal/setup.env && \
-    git checkout ${config_mttcs_branch} && \
-    eups declare -r . -t current
+WORKDIR ${WORKDIR}
 
-WORKDIR /home/saluser/ts_m2
+RUN git clone https://github.com/lsst-ts/ts_config_mttcs.git
 
-RUN source /opt/lsst/software/stack/loadLSST.bash && \
-    source /home/saluser/repos/ts_sal/setup.env && \
-    git checkout ${m2_branch} && \
-    git pull && \
-    eups declare -r . -t current && \
-    setup ts_m2 -t current && \
-    make_idl_files.py MTM2 &> /dev/null && \
-    scons
+WORKDIR ${WORKDIR}/ts_config_mttcs
+
+RUN git checkout ${config} -b ${config}
 
 WORKDIR /home/saluser/
 
-COPY m2_setup.sh /home/saluser/.setup.sh
+ENV TS_CONFIG_MTTCS_DIR=${WORKDIR}/ts_config_mttcs
 
+COPY m2_setup.sh /home/saluser/.setup.sh
