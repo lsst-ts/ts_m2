@@ -5,7 +5,7 @@ title: M2 v1
 description: Schema for M2 configuration files
 type: object
 properties:
-  max_force:
-    description: Maximum force that can be applied in each actuator in Newton.
-    type: number
-    default: 10.
+  lut_path:
+    description: Relative location of the Look-Up Tables, with respect to configuration package.
+    type: string
+    default: "harrisLUT/"
