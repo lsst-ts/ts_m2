@@ -4,6 +4,7 @@
 #   the "base" package.
 setupRequired(base)
 setupRequired(ts_salobj)
+setupRequired(ts_idl)
 setupRequired(ts_config_mttcs)
 
 envPrepend(PATH, ${PRODUCT_DIR}/bin)

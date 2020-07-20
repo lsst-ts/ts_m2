@@ -21,4 +21,4 @@ import asyncio
 
 from lsst.ts.m2 import M2
 
-asyncio.run(M2.amain(index=None))
+asyncio.run(M2.amain())
