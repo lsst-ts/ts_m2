@@ -31,6 +31,7 @@ test:
     - pyyaml
     - boto3
     - moto
+    - pandas
     - ts-simactuators
     - ts-dds
     - ts-idl
@@ -57,3 +58,4 @@ requirements:
     - setuptools_scm
     - ts-salobj
     - ts-simactuators
+    - pandas
