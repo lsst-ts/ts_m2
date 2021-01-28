@@ -126,10 +126,12 @@ class M2(salobj.ConfigurableCsc):
         )
 
         self.tel_temperature.set(
-            ring=np.zeros(self.n_ring_temperatures) + 27.0,
-            intake=np.zeros(self.n_intake_temperatures) + 25.0,
-            exhaust=np.zeros(self.n_exhaust_temperatures) + 30.0,
+            ring=np.zeros(self.n_ring_temperatures) + 11.0,
+            intake=np.zeros(self.n_intake_temperatures) + 11.0,
+            exhaust=np.zeros(self.n_exhaust_temperatures) + 11.0,
         )
+        self.max_temperature = 20.
+        self.min_temperature = 0.
 
     async def handle_summary_state(self):
         """Handle summary state changes.
@@ -234,16 +236,25 @@ class M2(salobj.ConfigurableCsc):
 
                 self.tel_powerStatus.put()
 
+                temperature_change = np.random.normal(
+                    scale=self.temperature_rms, size=self.n_ring_temperatures
+                )
+                if np.any(np.array(self.tel_temperature.data.ring)
+                          > self.max_temperature):
+                    temperature_change = - abs(temperature_change)
+                if np.any(np.array(self.tel_temperature.data.ring)
+                          < self.min_temperature):
+                    temperature_change = abs(temperature_change)
                 self.tel_temperature.set_put(
                     ring=self.tel_temperature.data.ring
-                    + np.random.normal(
-                        scale=self.temperature_rms, size=self.n_ring_temperatures
-                    ),
-                    intake=self.tel_temperature.data.intake
+                    + temperature_change,
+                    intake=np.mean(np.array(
+                        self.tel_temperature.data.ring).reshape(-1, 2), axis=0) - 2
                     + np.random.normal(
                         scale=self.temperature_rms, size=self.n_intake_temperatures
                     ),
-                    exhaust=self.tel_temperature.data.exhaust
+                    exhaust=np.mean(np.array(
+                        self.tel_temperature.data.ring).reshape(-1, 2), axis=0) + 2
                     + np.random.normal(
                         scale=self.temperature_rms, size=self.n_exhaust_temperatures
                     ),
@@ -561,16 +572,26 @@ class M2(salobj.ConfigurableCsc):
         update and publish the telemetry topics.
         """
 
+        self.lookUpForces()
         if self.evt_forceBalanceSystemStatus.data.status:
-            self.lookUpForces()
-        else:
             self.tel_axialForce.set(
-                lutGravity=np.zeros(self.n_actuators),
-                lutTemperature=np.zeros(self.n_actuators),
+                hardpointCorrection=np.random.normal(scale=self.force_rms,
+                                                     size=self.n_actuators,),
             )
             self.tel_tangentForce.set(
-                lutGravity=np.zeros(self.n_tangent_actuators),
-                lutTemperature=np.zeros(self.n_tangent_actuators),
+                hardpointCorrection=np.random.normal(scale=self.force_rms,
+                                                     size=self.n_tangent_actuators,),
+            )
+            self.tel_forceBalance.set(
+                **dict(
+                    [
+                        (
+                            axis,
+                            np.random.normal(scale=self.force_rms),
+                        )
+                        for axis in ("fx", "fy", "fz", "mx", "my", "mz")
+                    ]
+                )
             )
 
         demanded_axial_force = self.check_axial_force_limit()
@@ -771,7 +792,7 @@ class M2(salobj.ConfigurableCsc):
         myfa = np.zeros(self.n_actuators)
         myff = np.zeros(self.n_actuators)
 
-        lut_angle = -270.0 + self.zenith_angle
+        lut_angle = 90.0 - self.zenith_angle
 
         self.log.debug(
             f"Requested zAngle = {self.zenith_angle}," f"LUT angle = {lut_angle}."
@@ -792,7 +813,7 @@ class M2(salobj.ConfigurableCsc):
             )
 
         self.tel_axialForce.set(
-            lutGravity=myfe + myf0 + myfa + myff,
+            lutGravity=myfe + myfa,
             lutTemperature=np.squeeze(
                 tcoef[0] * self.lut["Tr"]
                 + tcoef[1] * self.lut["Tx"]
@@ -812,7 +833,7 @@ class M2(salobj.ConfigurableCsc):
             lutGravity=np.array(
                 [
                     0.0,
-                    -tangent_force,
+                    tangent_force,
                     tangent_force,
                     0.0,
                     -tangent_force,
