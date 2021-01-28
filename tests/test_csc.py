@@ -249,10 +249,10 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
             async def mtmount_emulator(elevation):
                 async with salobj.Controller("MTMount") as mtmount:
 
-                    mtmount.tel_Elevation.set(Elevation_Angle_Actual=elevation)
+                    mtmount.tel_elevation.set(angleActual=elevation)
 
                     while mtmount.isopen:
-                        mtmount.tel_Elevation.put()
+                        mtmount.tel_elevation.put()
                         await asyncio.sleep(1.0)
 
             elevation = np.random.random() * 60.0 + 20.0

@@ -106,9 +106,9 @@ class M2(salobj.ConfigurableCsc):
         self.lut = dict()
 
         # Remote to listen to MTMount position
-        self.mtmount = salobj.Remote(self.domain, "MTMount", include=["Elevation"])
+        self.mtmount = salobj.Remote(self.domain, "MTMount", include=["elevation"])
 
-        self.mtmount.tel_Elevation.callback = self.set_mount_elevation_callback
+        self.mtmount.tel_elevation.callback = self.set_mount_elevation_callback
 
         self.evt_inclinationTelemetrySource.set(
             source=MTM2.InclinationTelemetrySource.ONBOARD
@@ -364,7 +364,7 @@ class M2(salobj.ConfigurableCsc):
     def set_mount_elevation_callback(self, data):
         """Callback function to set the mount elevation.
         """
-        self.zenith_angle = 90.0 - data.Elevation_Angle_Actual
+        self.zenith_angle = 90.0 - data.angleActual
 
     async def handle_position_mirror(self, mirror_position_set_point):
         """Handle positining the mirror.
