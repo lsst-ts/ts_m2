@@ -72,6 +72,21 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
                 decimals=5,
             )
 
+            # Wait for m2AssemblyInPosition to be in position before applying
+            # the force.
+            in_position = (
+                await self.remote.evt_m2AssemblyInPosition.next(
+                    flush=False, timeout=STD_TIMEOUT
+                )
+            ).inPosition
+            while not in_position:
+                in_position = (
+                    await self.remote.evt_m2AssemblyInPosition.next(
+                        flush=False, timeout=STD_TIMEOUT
+                    )
+                ).inPosition
+
+            # m2AssemblyInPosition is now in position, ready to apply force.
             self.remote.evt_m2AssemblyInPosition.flush()
 
             await self.remote.cmd_applyForces.set_start(
@@ -191,6 +206,20 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
                 ]
             )
 
+            # Wait for m2AssemblyInPosition to be in position before applying
+            # the force.
+            in_position = (
+                await self.remote.evt_m2AssemblyInPosition.next(
+                    flush=False, timeout=STD_TIMEOUT
+                )
+            ).inPosition
+            while not in_position:
+                in_position = (
+                    await self.remote.evt_m2AssemblyInPosition.next(
+                        flush=False, timeout=STD_TIMEOUT
+                    )
+                ).inPosition
+            # m2AssemblyInPosition is now in position, ready to reposition it.
             self.remote.evt_m2AssemblyInPosition.flush()
 
             await self.remote.cmd_positionMirror.set_start(
