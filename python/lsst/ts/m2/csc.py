@@ -130,8 +130,8 @@ class M2(salobj.ConfigurableCsc):
             intake=np.zeros(self.n_intake_temperatures) + 11.0,
             exhaust=np.zeros(self.n_exhaust_temperatures) + 11.0,
         )
-        self.max_temperature = 20.
-        self.min_temperature = 0.
+        self.max_temperature = 20.0
+        self.min_temperature = 0.0
 
     async def handle_summary_state(self):
         """Handle summary state changes.
@@ -239,22 +239,27 @@ class M2(salobj.ConfigurableCsc):
                 temperature_change = np.random.normal(
                     scale=self.temperature_rms, size=self.n_ring_temperatures
                 )
-                if np.any(np.array(self.tel_temperature.data.ring)
-                          > self.max_temperature):
-                    temperature_change = - abs(temperature_change)
-                if np.any(np.array(self.tel_temperature.data.ring)
-                          < self.min_temperature):
+                if np.any(
+                    np.array(self.tel_temperature.data.ring) > self.max_temperature
+                ):
+                    temperature_change = -abs(temperature_change)
+                if np.any(
+                    np.array(self.tel_temperature.data.ring) < self.min_temperature
+                ):
                     temperature_change = abs(temperature_change)
                 self.tel_temperature.set_put(
-                    ring=self.tel_temperature.data.ring
-                    + temperature_change,
-                    intake=np.mean(np.array(
-                        self.tel_temperature.data.ring).reshape(-1, 2), axis=0) - 2
+                    ring=self.tel_temperature.data.ring + temperature_change,
+                    intake=np.mean(
+                        np.array(self.tel_temperature.data.ring).reshape(-1, 2), axis=0
+                    )
+                    - 2
                     + np.random.normal(
                         scale=self.temperature_rms, size=self.n_intake_temperatures
                     ),
-                    exhaust=np.mean(np.array(
-                        self.tel_temperature.data.ring).reshape(-1, 2), axis=0) + 2
+                    exhaust=np.mean(
+                        np.array(self.tel_temperature.data.ring).reshape(-1, 2), axis=0
+                    )
+                    + 2
                     + np.random.normal(
                         scale=self.temperature_rms, size=self.n_exhaust_temperatures
                     ),
@@ -375,7 +380,12 @@ class M2(salobj.ConfigurableCsc):
     def set_mount_elevation_callback(self, data):
         """Callback function to set the mount elevation.
         """
-        self.zenith_angle = 90.0 - data.angleActual
+        # xml 7 / 8 compatibility
+        self.zenith_angle = (
+            90.0 - data.actualPosition
+            if hasattr(data, "actualPosition")
+            else data.angleActual
+        )
 
     async def handle_position_mirror(self, mirror_position_set_point):
         """Handle positining the mirror.
@@ -575,20 +585,19 @@ class M2(salobj.ConfigurableCsc):
         self.lookUpForces()
         if self.evt_forceBalanceSystemStatus.data.status:
             self.tel_axialForce.set(
-                hardpointCorrection=np.random.normal(scale=self.force_rms,
-                                                     size=self.n_actuators,),
+                hardpointCorrection=np.random.normal(
+                    scale=self.force_rms, size=self.n_actuators,
+                ),
             )
             self.tel_tangentForce.set(
-                hardpointCorrection=np.random.normal(scale=self.force_rms,
-                                                     size=self.n_tangent_actuators,),
+                hardpointCorrection=np.random.normal(
+                    scale=self.force_rms, size=self.n_tangent_actuators,
+                ),
             )
             self.tel_forceBalance.set(
                 **dict(
                     [
-                        (
-                            axis,
-                            np.random.normal(scale=self.force_rms),
-                        )
+                        (axis, np.random.normal(scale=self.force_rms),)
                         for axis in ("fx", "fy", "fz", "mx", "my", "mz")
                     ]
                 )
