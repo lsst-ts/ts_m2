@@ -278,7 +278,11 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
             async def mtmount_emulator(elevation):
                 async with salobj.Controller("MTMount") as mtmount:
 
-                    mtmount.tel_elevation.set(angleActual=elevation)
+                    # xml 7/8 compatibility
+                    if hasattr(mtmount.tel_elevation.DataType(), "actualPosition"):
+                        mtmount.tel_elevation.set(actualPosition=elevation)
+                    else:
+                        mtmount.tel_elevation.set(angleActual=elevation)
 
                     while mtmount.isopen:
                         mtmount.tel_elevation.put()
