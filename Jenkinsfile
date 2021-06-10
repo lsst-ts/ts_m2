@@ -26,7 +26,7 @@ pipeline {
             steps {
                 script {
                     sh """
-                    docker pull lsstts/salobj:\${image_tag}
+                    docker pull lsstts/develop-env:\${image_tag}
                     """
                 }
             }
