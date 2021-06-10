@@ -1,0 +1,3 @@
+@startuml
+M2 *-- Model
+@enduml
