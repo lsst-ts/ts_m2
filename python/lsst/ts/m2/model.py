@@ -1,6 +1,6 @@
 # This file is part of ts_m2.
 #
-# Developed for the LSST Data Management System.
+# Developed for the Vera Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -51,7 +51,7 @@ class Model(object):
             A logger.
         telemetry_interval : `float`
             Telemetry interval in second.
-        inclination_source : `lsst.ts.idl.enums.MTM2.InclinationTelemetrySource`
+        inclination_source : `MTM2.InclinationTelemetrySource`
             Source of the inclination.
         zenith_angle : `float`
             Zenith angle in degree.
@@ -142,7 +142,7 @@ class Model(object):
 
         Returns
         -------
-        `dict`
+        temperature : `dict`
             Temperature sensor data. The key is sensor's position or reference.
         """
 
@@ -256,7 +256,7 @@ class Model(object):
 
         Returns
         -------
-        `numpy.ndarray`
+        demanded_axial_force : `numpy.ndarray`
             Array with the combined total force per actuator in Newton.
 
         Raises
@@ -291,7 +291,7 @@ class Model(object):
 
         Returns
         -------
-        `numpy.ndarray`
+        demanded_tanget_force : `numpy.ndarray`
             Array with the combined total force per actuator in Newton.
 
         Raises
@@ -333,7 +333,7 @@ class Model(object):
         ----------
         source : `int`
             Inclination source based on the enum:
-            lsst.ts.idl.enums.MTM2.InclinationTelemetrySource.
+            MTM2.InclinationTelemetrySource.
         """
 
         self.inclination_source = MTM2.InclinationTelemetrySource(int(source))
@@ -353,9 +353,9 @@ class Model(object):
 
         Returns
         -------
-        `dict`
+        telemetry_data : `dict`
             Telemetry data.
-        `bool`
+        in_position : `bool`
             M2 assembly is in position or not.
         """
 
@@ -618,7 +618,7 @@ class Model(object):
 
         Returns
         -------
-        `dict`
+        position : `dict`
             Mirror's position. The key is the axis (x, y, z, xRot, yRot, zRot)
             of mirror. The units are the micron and arcsec.
         """
@@ -695,7 +695,7 @@ class Model(object):
 
         Returns
         -------
-        `dict`
+        zenith_angle : `dict`
             Zenith angle data. The unit is degree.
         """
 
@@ -733,9 +733,9 @@ class Model(object):
 
         Returns
         -------
-        `numpy.ndarray`
+        actuator_position : `numpy.ndarray`
             Position of the actuators.
-        `numpy.ndarray`
+        actuator_steps : `numpy.ndarray`
             Steps of the actuators.
         """
 
