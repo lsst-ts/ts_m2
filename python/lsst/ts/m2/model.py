@@ -97,7 +97,7 @@ class Model(object):
             [(axis, 0.0) for axis in ("x", "y", "z", "xRot", "yRot", "zRot")]
         )
 
-        self.temperature = self._get_default_temperature()
+        self.temperature = self._get_default_temperatures()
 
         self.axial_forces = dict(
             [
@@ -132,27 +132,29 @@ class Model(object):
 
         self.error_cleared = True
 
-    def _get_default_temperature(self, init_temperature=11.0):
-        """Get the default temperature. The unit is degree C.
+    def _get_default_temperatures(self, temperature_init=11.0, temperature_ref=21.0):
+        """Get the default temperatures. The unit is degree C.
 
         Parameters
         ----------
-        init_temperature : `float`, optional
+        temperature_init : `float`, optional
             Initial temperature in degree C. (default is 11.0)
+        temperature_ref : `float`, optional
+            Reference temperature in degree C. (default is 21.0)
 
         Returns
         -------
-        temperature : `dict`
+        temperatures : `dict`
             Temperature sensor data. The key is sensor's position or reference.
         """
 
-        temperature = dict()
-        temperature["ring"] = [init_temperature] * 12
-        temperature["intake"] = [init_temperature] * 2
-        temperature["exhaust"] = [init_temperature] * 2
-        temperature["ref"] = 21.0
+        temperatures = dict()
+        temperatures["ring"] = [temperature_init] * 12
+        temperatures["intake"] = [temperature_init] * 2
+        temperatures["exhaust"] = [temperature_init] * 2
+        temperatures["ref"] = temperature_ref
 
-        return temperature
+        return temperatures
 
     @property
     def mirror_weight(self):
