@@ -25,15 +25,15 @@ import unittest
 
 from lsst.ts.idl.enums import MTM2
 
-from lsst.ts.m2 import Model
+from lsst.ts.m2 import ModelSim
 
 
-class TestModel(unittest.TestCase):
-    """Test the Model class."""
+class TestModelSim(unittest.TestCase):
+    """Test the Model Simulation class."""
 
     def setUp(self):
 
-        self.model = Model()
+        self.model = ModelSim()
 
         config_dir = pathlib.Path(__file__).parents[0]
 
