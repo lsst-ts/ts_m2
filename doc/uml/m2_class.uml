@@ -1,3 +1,4 @@
 @startuml
-M2 *-- Model
+class TcpClient
+M2 *-- ModelSim
 @enduml
