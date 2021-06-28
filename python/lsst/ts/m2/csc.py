@@ -30,7 +30,7 @@ from lsst.ts import salobj
 from lsst.ts.idl.enums import MTM2
 
 from .config_schema import CONFIG_SCHEMA
-from . import ModelSim
+from . import Model
 from . import __version__
 
 __all__ = ["M2"]
@@ -69,8 +69,8 @@ class M2(salobj.ConfigurableCsc):
             self.log.addHandler(stream_handler)
             self.log.setLevel(logging.DEBUG)
 
-        # Model simulation class to do the simulation
-        self.model = ModelSim(log=self.log, telemetry_interval=self.heartbeat_interval)
+        # Model class to do the simulation
+        self.model = Model(log=self.log, telemetry_interval=self.heartbeat_interval)
 
         self.telemetry_loop_task = None
         self.run_telemetry_loop = False

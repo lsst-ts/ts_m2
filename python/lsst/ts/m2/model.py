@@ -29,12 +29,12 @@ from time import sleep
 
 from lsst.ts.idl.enums import MTM2
 
-__all__ = ["ModelSim"]
+__all__ = ["Model"]
 
 
-class ModelSim(object):
+class Model(object):
     def __init__(self, log=None, telemetry_interval=0.05):
-        """Initialize the Model Simulation class.
+        """Initialize the Model class.
 
         Parameters
         ----------

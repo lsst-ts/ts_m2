@@ -28,7 +28,7 @@ except ImportError:
 from .config_schema import *
 from .utility import *
 from .tcp_client import *
-from .model_sim import *
+from .model import *
 from .csc import *
 
 try:
