@@ -45,7 +45,8 @@ POSITION_MIRROR_ERROR = 102
 class M2(salobj.ConfigurableCsc):
     """This is a test CSC for the M2 component with salobj."""
 
-    valid_simulation_modes = (0, 1)
+    # Class attribute comes from the upstream BaseCsc class
+    valid_simulation_modes = (0,)
     version = __version__
 
     def __init__(

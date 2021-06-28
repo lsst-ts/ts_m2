@@ -24,6 +24,7 @@ import asyncio
 import json
 import copy
 
+from lsst.ts import salobj
 from lsst.ts import tcpip
 
 from . import TopicType
@@ -31,7 +32,7 @@ from . import TopicType
 __all__ = ["TcpClient"]
 
 
-class TcpClient(object):
+class TcpClient:
     """TCP/IP client.
 
     Parameters
@@ -84,7 +85,7 @@ class TcpClient(object):
         self.max_n_bytes = int(max_n_bytes)
 
         # Unique ID
-        self._uniq_id = self._uniq_id_gen()
+        self._uniq_id = salobj.index_generator()
 
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))
 
@@ -94,38 +95,14 @@ class TcpClient(object):
         # Monitor loop task is done or not (asyncio.Future)
         self._monitor_loop_task_done = None
 
-    def _uniq_id_gen(self):
-        """Unique ID generator.
-
-        Yields
-        ------
-        `Generator`
-            Unique Id generator object.
-        """
-
-        value = 0
-        while True:
-            yield value
-            value += 1
-
-    def get_uniq_id(self):
-        """Get the unique ID.
-
-        Returns
-        -------
-        `int`
-            Unique ID.
-        """
-
-        return next(self._uniq_id)
-
-    async def connect(self, connect_retry_interval=1):
+    async def connect(self, connect_retry_interval=1.0):
         """Connect to the server.
 
         Parameters
         ----------
         connect_retry_interval : `float`, optional
-            Connection retry interval in second. (default is 1)
+            How long to wait before trying to reconnect when connection fails.
+            (default is 1.0)
 
         Notes
         -----
@@ -147,7 +124,7 @@ class TcpClient(object):
         self.log.info("Connection is on.")
 
     def is_connected(self):
-        """Is connected with the server or not.
+        """Determines if the client is connected to the server.
 
         Returns
         -------
@@ -162,14 +139,14 @@ class TcpClient(object):
             or self.writer.is_closing()
         )
 
-    async def write(self, topic_type, topic, topic_details=None, comp_name=None):
-        """Write the message.
+    async def write(self, topic_type, topic_name, topic_details=None, comp_name=None):
+        """Writes message to the server.
 
         Parameters
         ----------
         topic_type : `TopicType`
             Topic type.
-        topic : `str`
+        topic_name : `str`
             Topic name.
         topic_details : `dict` or None, optional
             Topic details. (the default is None)
@@ -180,36 +157,40 @@ class TcpClient(object):
         Raises
         ------
         RuntimeError
-            There is no TCP/IP connection.
+            When there is no TCP/IP connection.
         ValueError
-            The topic type is not supported.
+            When the topic type is not supported.
         """
 
         if not self.is_connected():
-            raise RuntimeError("There is no TCP/IP connection.")
+            raise RuntimeError("Client not connected with tcp/ip server.")
 
         if topic_details is None:
             topic_details_with_header = dict()
         else:
             topic_details_with_header = copy.copy(topic_details)
 
-        if topic_type == TopicType.CMD:
-            self._add_cmd_header(topic, topic_details_with_header)
-        elif topic_type == TopicType.EVT:
-            self._add_evt_header(topic, topic_details_with_header, comp_name=comp_name)
-        elif topic_type == TopicType.TEL:
-            self._add_tel_header(topic, topic_details_with_header, comp_name=comp_name)
+        if topic_type == TopicType.Command:
+            self._add_cmd_header(topic_name, topic_details_with_header)
+        elif topic_type == TopicType.Event:
+            self._add_evt_header(
+                topic_name, topic_details_with_header, comp_name=comp_name
+            )
+        elif topic_type == TopicType.Telemetry:
+            self._add_tel_header(
+                topic_name, topic_details_with_header, comp_name=comp_name
+            )
         else:
             raise ValueError(f"The topic type: {topic_type} is not supported.")
 
         await self._write_msg_to_socket(topic_details_with_header)
 
-    def _add_cmd_header(self, topic, topic_details):
+    def _add_cmd_header(self, topic_name, topic_details):
         """Add the command header.
 
         Parameters
         ----------
-        topic : `str`
+        topic_name : `str`
             Topic name.
         topic_details : `dict`
             Topic details.
@@ -217,21 +198,21 @@ class TcpClient(object):
         Raises
         ------
         ValueError
-            The 'cmdName' is in the topic details already.
+            If 'cmdName' is in the topic details already.
         """
 
         if "cmdName" in topic_details.keys():
             raise ValueError("The 'cmdName' is in the topic details already.")
 
-        topic_details["cmdName"] = topic
-        topic_details["cmdId"] = self.get_uniq_id()
+        topic_details["cmdName"] = topic_name
+        topic_details["cmdId"] = next(self._uniq_id)
 
-    def _add_evt_header(self, topic, topic_details, comp_name=None):
+    def _add_evt_header(self, topic_name, topic_details, comp_name=None):
         """Add the event header.
 
         Parameters
         ----------
-        topic : `str`
+        topic_name : `str`
             Topic name.
         topic_details : `dict`
             Topic details.
@@ -241,23 +222,23 @@ class TcpClient(object):
         Raises
         ------
         ValueError
-            The 'evtName' is in the topic details already.
+            If 'evtName' is in the topic details already.
         """
 
         if "evtName" in topic_details.keys():
             raise ValueError("The 'evtName' is in the topic details already.")
 
-        topic_details["evtName"] = topic
+        topic_details["evtName"] = topic_name
 
         if comp_name is not None:
             topic_details["compName"] = comp_name
 
-    def _add_tel_header(self, topic, topic_details, comp_name=None):
+    def _add_tel_header(self, topic_name, topic_details, comp_name=None):
         """Add the telemetry header.
 
         Parameters
         ----------
-        topic : `str`
+        topic_name : `str`
             Topic name.
         topic_details : `dict`
             Topic details.
@@ -267,13 +248,13 @@ class TcpClient(object):
         Raises
         ------
         ValueError
-            The 'telName' is in the topic details already.
+            If 'telName' is in the topic details already.
         """
 
         if "telName" in topic_details.keys():
             raise ValueError("The 'telName' is in the topic details already.")
 
-        topic_details["telName"] = topic
+        topic_details["telName"] = topic_name
 
         if comp_name is not None:
             topic_details["compName"] = comp_name
@@ -313,14 +294,14 @@ class TcpClient(object):
         self.log.info("Begin to monitor the incoming message.")
 
         while self.is_connected():
-            await self.read_to_queue()
+            await self.put_read_msg_to_queue()
 
         self._monitor_loop_task_done.set_result("Monitor is done.")
 
         self.log.info("Stop to monitor the incoming message.")
 
-    async def read_to_queue(self):
-        """Read the message and put to self.queue."""
+    async def put_read_msg_to_queue(self):
+        """Put the read message to self.queue."""
 
         try:
             data = await self.reader.read(n=self.max_n_bytes)

@@ -39,10 +39,10 @@ READ_TIMEOUT = 1
 class TestTcpClient(unittest.IsolatedAsyncioTestCase):
     """Test the TcpClient class."""
 
-    def setUp(self):
-
-        self.host = tcpip.LOCAL_HOST
-        self.log = logging.getLogger()
+    @classmethod
+    def setUpClass(cls):
+        cls.host = tcpip.LOCAL_HOST
+        cls.log = logging.getLogger()
 
     @contextlib.asynccontextmanager
     async def make_server(self):
@@ -80,13 +80,6 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
-    def test_get_uniq_id(self):
-
-        client = TcpClient(self.host, 0, log=self.log)
-
-        for idx in range(3):
-            self.assertEqual(client.get_uniq_id(), idx)
-
     async def test_is_connected(self):
 
         async with self.make_server() as server, self.make_client(server) as client:
@@ -105,19 +98,19 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         tcp_client = TcpClient(self.host, 0, log=self.log)
 
         with self.assertRaises(RuntimeError):
-            await tcp_client.write(TopicType.EVT, "inPosition")
+            await tcp_client.write(TopicType.Event, "inPosition")
 
     async def test_write_cmd(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
             topic = "move"
             topic_details = {"x": 1, "y": 2, "z": 3}
-            await client.write(TopicType.CMD, topic, topic_details=topic_details)
+            await client.write(TopicType.Command, topic, topic_details=topic_details)
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
             self.assertEqual(message["cmdName"], topic)
-            self.assertEqual(message["cmdId"], 0)
+            self.assertEqual(message["cmdId"], 1)
             self.assertEqual(message["x"], topic_details["x"])
             self.assertEqual(message["y"], topic_details["y"])
             self.assertEqual(message["z"], topic_details["z"])
@@ -144,21 +137,23 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             topic = "move"
             topic_details = {"x": 1, "y": 2, "z": 3}
             for count in range(3):
-                await client.write(TopicType.CMD, topic, topic_details=topic_details)
+                await client.write(
+                    TopicType.Command, topic, topic_details=topic_details
+                )
 
                 message = await self._read_msg_in_server(server, READ_TIMEOUT)
-                self.assertEqual(message["cmdId"], count)
+                self.assertEqual(message["cmdId"], count + 1)
 
     async def test_write_cmd_no_details(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
             topic = "enable"
-            await client.write(TopicType.CMD, topic)
+            await client.write(TopicType.Command, topic)
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
             self.assertEqual(message["cmdName"], topic)
-            self.assertEqual(message["cmdId"], 0)
+            self.assertEqual(message["cmdId"], 1)
 
     async def test_write_cmd_error(self):
         async with self.make_server() as server, self.make_client(server) as client:
@@ -166,7 +161,9 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             topic = "move"
             topic_details = {"cmdName": "name"}
             with self.assertRaises(ValueError):
-                await client.write(TopicType.CMD, topic, topic_details=topic_details)
+                await client.write(
+                    TopicType.Command, topic, topic_details=topic_details
+                )
 
     async def test_write_evt(self):
         async with self.make_server() as server, self.make_client(server) as client:
@@ -175,7 +172,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             topic_details = {"status": True}
             comp_name = "MTMount"
             await client.write(
-                TopicType.EVT, topic, topic_details=topic_details, comp_name=comp_name
+                TopicType.Event, topic, topic_details=topic_details, comp_name=comp_name
             )
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
@@ -189,7 +186,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             topic = "inPosition"
             comp_name = "MTMount"
-            await client.write(TopicType.EVT, topic, comp_name=comp_name)
+            await client.write(TopicType.Event, topic, comp_name=comp_name)
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
@@ -204,7 +201,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             comp_name = "MTMount"
             with self.assertRaises(ValueError):
                 await client.write(
-                    TopicType.EVT,
+                    TopicType.Event,
                     topic,
                     topic_details=topic_details,
                     comp_name=comp_name,
@@ -217,7 +214,10 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             topic_details = {"measured": 1.1}
             comp_name = "MTMount"
             await client.write(
-                TopicType.TEL, topic, topic_details=topic_details, comp_name=comp_name
+                TopicType.Telemetry,
+                topic,
+                topic_details=topic_details,
+                comp_name=comp_name,
             )
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
@@ -231,7 +231,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             topic = "inPosition"
             comp_name = "MTMount"
-            await client.write(TopicType.TEL, topic, comp_name=comp_name)
+            await client.write(TopicType.Telemetry, topic, comp_name=comp_name)
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
@@ -246,19 +246,19 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             comp_name = "MTMount"
             with self.assertRaises(ValueError):
                 await client.write(
-                    TopicType.TEL,
+                    TopicType.Telemetry,
                     topic,
                     topic_details=topic_details,
                     comp_name=comp_name,
                 )
 
-    async def test_read_to_queue(self):
+    async def test_put_read_msg_to_queue(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
             input_msg = {"val": 1}
             await self._write_msg_in_server(server, input_msg)
 
-            await client.read_to_queue()
+            await client.put_read_msg_to_queue()
 
             self.assertEqual(client.queue.qsize(), 1)
 
