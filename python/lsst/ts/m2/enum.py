@@ -21,10 +21,10 @@
 
 from enum import auto, IntEnum
 
-__all__ = ["TopicType"]
+__all__ = ["MsgType"]
 
 
-class TopicType(IntEnum):
+class MsgType(IntEnum):
     Command = 1
     Event = auto()
     Telemetry = auto()

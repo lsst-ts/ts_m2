@@ -27,7 +27,7 @@ import copy
 from lsst.ts import salobj
 from lsst.ts import tcpip
 
-from . import TopicType
+from . import MsgType
 
 __all__ = ["TcpClient"]
 
@@ -139,17 +139,17 @@ class TcpClient:
             or self.writer.is_closing()
         )
 
-    async def write(self, topic_type, topic_name, topic_details=None, comp_name=None):
+    async def write(self, msg_type, msg_name, msg_details=None, comp_name=None):
         """Writes message to the server.
 
         Parameters
         ----------
-        topic_type : `TopicType`
-            Topic type.
-        topic_name : `str`
-            Topic name.
-        topic_details : `dict` or None, optional
-            Topic details. (the default is None)
+        msg_type : `MsgType`
+            Message type.
+        msg_name : `str`
+            Message name.
+        msg_details : `dict` or None, optional
+            Message details. (the default is None)
         comp_name : `str` or None, optional
             Specific component name used in the event or telemetry. (the
             default is None)
@@ -159,120 +159,111 @@ class TcpClient:
         RuntimeError
             When there is no TCP/IP connection.
         ValueError
-            When the topic type is not supported.
+            When the message type is not supported.
         """
 
         if not self.is_connected():
             raise RuntimeError("Client not connected with tcp/ip server.")
 
-        if topic_details is None:
-            topic_details_with_header = dict()
+        if msg_details is None:
+            msg_details_with_header = dict()
         else:
-            topic_details_with_header = copy.copy(topic_details)
+            msg_details_with_header = copy.copy(msg_details)
 
-        if topic_type == TopicType.Command:
-            self._add_cmd_header(topic_name, topic_details_with_header)
-        elif topic_type == TopicType.Event:
-            self._add_evt_header(
-                topic_name, topic_details_with_header, comp_name=comp_name
-            )
-        elif topic_type == TopicType.Telemetry:
-            self._add_tel_header(
-                topic_name, topic_details_with_header, comp_name=comp_name
-            )
+        if msg_type == MsgType.Command:
+            self._add_cmd_header(msg_name, msg_details_with_header)
+        elif msg_type == MsgType.Event:
+            self._add_evt_header(msg_name, msg_details_with_header, comp_name=comp_name)
+        elif msg_type == MsgType.Telemetry:
+            self._add_tel_header(msg_name, msg_details_with_header, comp_name=comp_name)
         else:
-            raise ValueError(f"The topic type: {topic_type} is not supported.")
-
-        await self._write_msg_to_socket(topic_details_with_header)
-
-    def _add_cmd_header(self, topic_name, topic_details):
-        """Add the command header.
-
-        Parameters
-        ----------
-        topic_name : `str`
-            Topic name.
-        topic_details : `dict`
-            Topic details.
-
-        Raises
-        ------
-        ValueError
-            If 'cmdName' is in the topic details already.
-        """
-
-        if "cmdName" in topic_details.keys():
-            raise ValueError("The 'cmdName' is in the topic details already.")
-
-        topic_details["cmdName"] = topic_name
-        topic_details["cmdId"] = next(self._uniq_id)
-
-    def _add_evt_header(self, topic_name, topic_details, comp_name=None):
-        """Add the event header.
-
-        Parameters
-        ----------
-        topic_name : `str`
-            Topic name.
-        topic_details : `dict`
-            Topic details.
-        comp_name : `str` or None, optional
-            Specific component name. (the default is None)
-
-        Raises
-        ------
-        ValueError
-            If 'evtName' is in the topic details already.
-        """
-
-        if "evtName" in topic_details.keys():
-            raise ValueError("The 'evtName' is in the topic details already.")
-
-        topic_details["evtName"] = topic_name
-
-        if comp_name is not None:
-            topic_details["compName"] = comp_name
-
-    def _add_tel_header(self, topic_name, topic_details, comp_name=None):
-        """Add the telemetry header.
-
-        Parameters
-        ----------
-        topic_name : `str`
-            Topic name.
-        topic_details : `dict`
-            Topic details.
-        comp_name : `str` or None, optional
-            Specific component name. (the default is None)
-
-        Raises
-        ------
-        ValueError
-            If 'telName' is in the topic details already.
-        """
-
-        if "telName" in topic_details.keys():
-            raise ValueError("The 'telName' is in the topic details already.")
-
-        topic_details["telName"] = topic_name
-
-        if comp_name is not None:
-            topic_details["compName"] = comp_name
-
-    async def _write_msg_to_socket(self, input_msg):
-        """Write the message to socket.
-
-        Parameters
-        ----------
-        input_msg : `dict`
-            Input message.
-        """
+            raise ValueError(f"The message type: {msg_type} is not supported.")
 
         # Transfer to json string and do the encode
-        msg = json.dumps(input_msg, indent=4).encode() + tcpip.TERMINATOR
+        msg = json.dumps(msg_details_with_header, indent=4).encode() + tcpip.TERMINATOR
 
         self.writer.write(msg)
         await self.writer.drain()
+
+    def _add_cmd_header(self, msg_name, msg_details):
+        """Add the command header.
+
+        Note: This method will modify the input: msg_details.
+
+        Parameters
+        ----------
+        msg_name : `str`
+            Message name.
+        msg_details : `dict`
+            Message details.
+
+        Raises
+        ------
+        ValueError
+            If 'cmdName' is in the message details already.
+        """
+
+        if "cmdName" in msg_details.keys():
+            raise ValueError("The 'cmdName' is in the message details already.")
+
+        msg_details["cmdName"] = msg_name
+        msg_details["cmdId"] = next(self._uniq_id)
+
+    def _add_evt_header(self, msg_name, msg_details, comp_name=None):
+        """Add the event header.
+
+        Note: This method will modify the input: msg_details.
+
+        Parameters
+        ----------
+        msg_name : `str`
+            Message name.
+        msg_details : `dict`
+            Message details.
+        comp_name : `str` or None, optional
+            Specific component name. (the default is None)
+
+        Raises
+        ------
+        ValueError
+            If 'evtName' is in the message details already.
+        """
+
+        if "evtName" in msg_details.keys():
+            raise ValueError("The 'evtName' is in the message details already.")
+
+        msg_details["evtName"] = msg_name
+
+        if comp_name is not None:
+            msg_details["compName"] = comp_name
+
+    def _add_tel_header(self, msg_name, msg_details, comp_name=None):
+        """Add the telemetry header.
+
+        Note: This method will modify the input: msg_details.
+
+        Parameters
+        ----------
+        msg_name : `str`
+            Message name.
+        msg_details : `dict`
+            Message details.
+        comp_name : `str` or None, optional
+            Specific component name. (the default is None)
+
+        Raises
+        ------
+        ValueError
+            If 'telName' is in the message details already.
+        """
+
+        if "telName" in msg_details.keys():
+            raise ValueError("The 'telName' is in the message details already.")
+
+        msg_details["telName"] = msg_name
+
+        if comp_name is not None:
+            msg_details["compName"] = comp_name
 
     async def run_monitor_loop(self):
         """Run the monitor loop. The received message from server will be put
@@ -294,13 +285,13 @@ class TcpClient:
         self.log.info("Begin to monitor the incoming message.")
 
         while self.is_connected():
-            await self.put_read_msg_to_queue()
+            await self._put_read_msg_to_queue()
 
         self._monitor_loop_task_done.set_result("Monitor is done.")
 
         self.log.info("Stop to monitor the incoming message.")
 
-    async def put_read_msg_to_queue(self):
+    async def _put_read_msg_to_queue(self):
         """Put the read message to self.queue."""
 
         try:

@@ -29,7 +29,7 @@ import json
 
 from lsst.ts import tcpip
 
-from lsst.ts.m2 import TopicType, TcpClient
+from lsst.ts.m2 import MsgType, TcpClient
 
 
 # Read timeout in second
@@ -98,22 +98,22 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         tcp_client = TcpClient(self.host, 0, log=self.log)
 
         with self.assertRaises(RuntimeError):
-            await tcp_client.write(TopicType.Event, "inPosition")
+            await tcp_client.write(MsgType.Event, "inPosition")
 
     async def test_write_cmd(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "move"
-            topic_details = {"x": 1, "y": 2, "z": 3}
-            await client.write(TopicType.Command, topic, topic_details=topic_details)
+            msg_name = "move"
+            msg_details = {"x": 1, "y": 2, "z": 3}
+            await client.write(MsgType.Command, msg_name, msg_details=msg_details)
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["cmdName"], topic)
+            self.assertEqual(message["cmdName"], msg_name)
             self.assertEqual(message["cmdId"], 1)
-            self.assertEqual(message["x"], topic_details["x"])
-            self.assertEqual(message["y"], topic_details["y"])
-            self.assertEqual(message["z"], topic_details["z"])
+            self.assertEqual(message["x"], msg_details["x"])
+            self.assertEqual(message["y"], msg_details["y"])
+            self.assertEqual(message["z"], msg_details["z"])
 
     async def _read_msg_in_server(self, server, timeout):
         """Read the received message in server.
@@ -134,12 +134,10 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
     async def test_write_cmd_multiple(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "move"
-            topic_details = {"x": 1, "y": 2, "z": 3}
+            msg_name = "move"
+            msg_details = {"x": 1, "y": 2, "z": 3}
             for count in range(3):
-                await client.write(
-                    TopicType.Command, topic, topic_details=topic_details
-                )
+                await client.write(MsgType.Command, msg_name, msg_details=msg_details)
 
                 message = await self._read_msg_in_server(server, READ_TIMEOUT)
                 self.assertEqual(message["cmdId"], count + 1)
@@ -147,108 +145,106 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
     async def test_write_cmd_no_details(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "enable"
-            await client.write(TopicType.Command, topic)
+            msg_name = "enable"
+            await client.write(MsgType.Command, msg_name)
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["cmdName"], topic)
+            self.assertEqual(message["cmdName"], msg_name)
             self.assertEqual(message["cmdId"], 1)
 
     async def test_write_cmd_error(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "move"
-            topic_details = {"cmdName": "name"}
+            msg_name = "move"
+            msg_details = {"cmdName": "name"}
             with self.assertRaises(ValueError):
-                await client.write(
-                    TopicType.Command, topic, topic_details=topic_details
-                )
+                await client.write(MsgType.Command, msg_name, msg_details=msg_details)
 
     async def test_write_evt(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "inPosition"
-            topic_details = {"status": True}
+            msg_name = "inPosition"
+            msg_details = {"status": True}
             comp_name = "MTMount"
             await client.write(
-                TopicType.Event, topic, topic_details=topic_details, comp_name=comp_name
+                MsgType.Event, msg_name, msg_details=msg_details, comp_name=comp_name
             )
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["evtName"], topic)
-            self.assertEqual(message["status"], topic_details["status"])
+            self.assertEqual(message["evtName"], msg_name)
+            self.assertEqual(message["status"], msg_details["status"])
             self.assertEqual(message["compName"], comp_name)
 
     async def test_write_evt_no_details(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "inPosition"
+            msg_name = "inPosition"
             comp_name = "MTMount"
-            await client.write(TopicType.Event, topic, comp_name=comp_name)
+            await client.write(MsgType.Event, msg_name, comp_name=comp_name)
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["evtName"], topic)
+            self.assertEqual(message["evtName"], msg_name)
             self.assertEqual(message["compName"], comp_name)
 
     async def test_write_evt_error(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "inPosition"
-            topic_details = {"evtName": topic}
+            msg_name = "inPosition"
+            msg_details = {"evtName": msg_name}
             comp_name = "MTMount"
             with self.assertRaises(ValueError):
                 await client.write(
-                    TopicType.Event,
-                    topic,
-                    topic_details=topic_details,
+                    MsgType.Event,
+                    msg_name,
+                    msg_details=msg_details,
                     comp_name=comp_name,
                 )
 
     async def test_write_tel(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "elevation"
-            topic_details = {"measured": 1.1}
+            msg_name = "elevation"
+            msg_details = {"measured": 1.1}
             comp_name = "MTMount"
             await client.write(
-                TopicType.Telemetry,
-                topic,
-                topic_details=topic_details,
+                MsgType.Telemetry,
+                msg_name,
+                msg_details=msg_details,
                 comp_name=comp_name,
             )
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["telName"], topic)
-            self.assertEqual(message["measured"], topic_details["measured"])
+            self.assertEqual(message["telName"], msg_name)
+            self.assertEqual(message["measured"], msg_details["measured"])
             self.assertEqual(message["compName"], comp_name)
 
     async def test_write_tel_no_details(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "inPosition"
+            msg_name = "inPosition"
             comp_name = "MTMount"
-            await client.write(TopicType.Telemetry, topic, comp_name=comp_name)
+            await client.write(MsgType.Telemetry, msg_name, comp_name=comp_name)
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["telName"], topic)
+            self.assertEqual(message["telName"], msg_name)
             self.assertEqual(message["compName"], comp_name)
 
     async def test_write_tel_error(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
-            topic = "inPosition"
-            topic_details = {"telName": topic}
+            msg_name = "inPosition"
+            msg_details = {"telName": msg_name}
             comp_name = "MTMount"
             with self.assertRaises(ValueError):
                 await client.write(
-                    TopicType.Telemetry,
-                    topic,
-                    topic_details=topic_details,
+                    MsgType.Telemetry,
+                    msg_name,
+                    msg_details=msg_details,
                     comp_name=comp_name,
                 )
 
@@ -258,7 +254,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             input_msg = {"val": 1}
             await self._write_msg_in_server(server, input_msg)
 
-            await client.put_read_msg_to_queue()
+            await client._put_read_msg_to_queue()
 
             self.assertEqual(client.queue.qsize(), 1)
 
