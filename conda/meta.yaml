@@ -26,11 +26,11 @@ test:
     - ts-dds
     - ts-idl {{ idl_version }}
     - ts-salobj {{ salobj_version }}
+    - ts-tcpip
   source_files:
     - python
     - bin.src
     - tests
-    - schema
     - setup.cfg
   commands:
     - py.test
@@ -49,3 +49,4 @@ requirements:
     - ts-salobj
     - ts-simactuators
     - pandas
+    - ts-tcpip

@@ -1,6 +1,6 @@
 # This file is part of ts_m2.
 #
-# Developed for the LSST Data Management System.
+# Developed for the Vera Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -19,14 +19,22 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# Set __version__ before importing the CSC
-try:
-    from .version import *
-except ImportError:
-    __version__ = "?"
+__all__ = ["CONFIG_SCHEMA"]
 
-from .config_schema import *
-from .enum import *
-from .tcp_client import *
-from .model import *
-from .csc import *
+import yaml
+
+CONFIG_SCHEMA = yaml.safe_load(
+    """
+$schema: http://json-schema.org/draft-07/schema#
+$id: https://github.com/lsst-ts/ts_m2/blob/master/schema/m2.yaml
+# title must end with one or more spaces followed by the schema version, which must begin with "v"
+title: M2 v1
+description: Schema for M2 configuration files
+type: object
+properties:
+  lut_path:
+    description: Relative location of the Look-Up Tables, with respect to configuration package.
+    type: string
+    default: "harrisLUT/"
+"""
+)

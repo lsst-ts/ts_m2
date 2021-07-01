@@ -22,7 +22,6 @@
 import sys
 import asyncio
 import concurrent
-import pathlib
 import logging
 import argparse
 import traceback
@@ -30,7 +29,9 @@ import traceback
 from lsst.ts import salobj
 from lsst.ts.idl.enums import MTM2
 
+from .config_schema import CONFIG_SCHEMA
 from . import Model
+from . import __version__
 
 __all__ = ["M2"]
 
@@ -44,6 +45,10 @@ POSITION_MIRROR_ERROR = 102
 class M2(salobj.ConfigurableCsc):
     """This is a test CSC for the M2 component with salobj."""
 
+    # Class attribute comes from the upstream BaseCsc class
+    valid_simulation_modes = (0,)
+    version = __version__
+
     def __init__(
         self,
         config_dir=None,
@@ -51,13 +56,10 @@ class M2(salobj.ConfigurableCsc):
         simulation_mode=0,
         verbose=False,
     ):
-        schema_path = (
-            pathlib.Path(__file__).resolve().parents[4].joinpath("schema", "m2.yaml")
-        )
         super().__init__(
             "MTM2",
             index=0,
-            schema_path=schema_path,
+            config_schema=CONFIG_SCHEMA,
             config_dir=config_dir,
             initial_state=initial_state,
             simulation_mode=simulation_mode,

@@ -1,6 +1,6 @@
 # This file is part of ts_m2.
 #
-# Developed for the LSST Data Management System.
+# Developed for the Vera Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -19,14 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# Set __version__ before importing the CSC
-try:
-    from .version import *
-except ImportError:
-    __version__ = "?"
+from enum import auto, IntEnum
 
-from .config_schema import *
-from .enum import *
-from .tcp_client import *
-from .model import *
-from .csc import *
+__all__ = ["MsgType"]
+
+
+class MsgType(IntEnum):
+    Command = 1
+    Event = auto()
+    Telemetry = auto()
