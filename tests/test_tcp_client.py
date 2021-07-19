@@ -80,6 +80,10 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_close(self):
+        client = TcpClient(tcpip.LOCAL_HOST, 0)
+        await client.close()
+
     async def test_is_connected(self):
 
         async with self.make_server() as server, self.make_client(server) as client:
@@ -109,8 +113,8 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["cmdName"], msg_name)
-            self.assertEqual(message["cmdId"], 1)
+            self.assertEqual(message["id"], "cmd_" + msg_name)
+            self.assertEqual(message["sequence_id"], 1)
             self.assertEqual(message["x"], msg_details["x"])
             self.assertEqual(message["y"], msg_details["y"])
             self.assertEqual(message["z"], msg_details["z"])
@@ -140,7 +144,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
                 await client.write(MsgType.Command, msg_name, msg_details=msg_details)
 
                 message = await self._read_msg_in_server(server, READ_TIMEOUT)
-                self.assertEqual(message["cmdId"], count + 1)
+                self.assertEqual(message["sequence_id"], count + 1)
 
     async def test_write_cmd_no_details(self):
         async with self.make_server() as server, self.make_client(server) as client:
@@ -150,14 +154,14 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["cmdName"], msg_name)
-            self.assertEqual(message["cmdId"], 1)
+            self.assertEqual(message["id"], "cmd_" + msg_name)
+            self.assertEqual(message["sequence_id"], 1)
 
-    async def test_write_cmd_error(self):
+    async def test_write_id_error(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
             msg_name = "move"
-            msg_details = {"cmdName": "name"}
+            msg_details = {"id": "cmd_name"}
             with self.assertRaises(ValueError):
                 await client.write(MsgType.Command, msg_name, msg_details=msg_details)
 
@@ -173,7 +177,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["evtName"], msg_name)
+            self.assertEqual(message["id"], "evt_" + msg_name)
             self.assertEqual(message["status"], msg_details["status"])
             self.assertEqual(message["compName"], comp_name)
 
@@ -186,22 +190,8 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["evtName"], msg_name)
+            self.assertEqual(message["id"], "evt_" + msg_name)
             self.assertEqual(message["compName"], comp_name)
-
-    async def test_write_evt_error(self):
-        async with self.make_server() as server, self.make_client(server) as client:
-
-            msg_name = "inPosition"
-            msg_details = {"evtName": msg_name}
-            comp_name = "MTMount"
-            with self.assertRaises(ValueError):
-                await client.write(
-                    MsgType.Event,
-                    msg_name,
-                    msg_details=msg_details,
-                    comp_name=comp_name,
-                )
 
     async def test_write_tel(self):
         async with self.make_server() as server, self.make_client(server) as client:
@@ -218,7 +208,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["telName"], msg_name)
+            self.assertEqual(message["id"], "tel_" + msg_name)
             self.assertEqual(message["measured"], msg_details["measured"])
             self.assertEqual(message["compName"], comp_name)
 
@@ -231,22 +221,8 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-            self.assertEqual(message["telName"], msg_name)
+            self.assertEqual(message["id"], "tel_" + msg_name)
             self.assertEqual(message["compName"], comp_name)
-
-    async def test_write_tel_error(self):
-        async with self.make_server() as server, self.make_client(server) as client:
-
-            msg_name = "inPosition"
-            msg_details = {"telName": msg_name}
-            comp_name = "MTMount"
-            with self.assertRaises(ValueError):
-                await client.write(
-                    MsgType.Telemetry,
-                    msg_name,
-                    msg_details=msg_details,
-                    comp_name=comp_name,
-                )
 
     async def test_put_read_msg_to_queue(self):
         async with self.make_server() as server, self.make_client(server) as client:
@@ -254,7 +230,8 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             input_msg = {"val": 1}
             await self._write_msg_in_server(server, input_msg)
 
-            await client._put_read_msg_to_queue()
+            # Sleep a short time to let the monitor loop have a chance to run
+            await asyncio.sleep(0.01)
 
             self.assertEqual(client.queue.qsize(), 1)
 
@@ -281,12 +258,8 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         async with self.make_server() as server, self.make_client(server) as client:
 
             input_msg = {"val": 1}
-            await asyncio.gather(
-                client.run_monitor_loop(),
-                self._write_msg_continuously_at_specific_time(
-                    2, server, input_msg, 5, 1
-                ),
-                self._close_client_at_specific_time(10, server),
+            await self._write_msg_continuously_at_specific_time(
+                2, server, input_msg, 5, 1
             )
 
             self.assertEqual(client.queue.qsize(), 5)
@@ -319,24 +292,6 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         for count in range(count_total):
             await self._write_msg_in_server(server, input_msg)
             await asyncio.sleep(sleep_time)
-
-    async def _close_client_at_specific_time(self, time, server):
-        """Close the connection with client at the specific time.
-
-        Parameters
-        ----------
-        time : `float`
-            Time to close the connection with client in second.
-        server : `lsst.ts.tcpip.OneClientServer`
-            TCP/IP server.
-        """
-
-        await asyncio.sleep(time)
-
-        await server.close_client()
-
-        # Need to add a small time to close the connection totally
-        await asyncio.sleep(0.1)
 
 
 if __name__ == "__main__":

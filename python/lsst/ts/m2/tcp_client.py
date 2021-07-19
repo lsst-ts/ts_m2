@@ -89,11 +89,8 @@ class TcpClient:
 
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))
 
-        # Monitor loop task (asyncio.Task)
-        self._monitor_loop_task = None
-
-        # Monitor loop task is done or not (asyncio.Future)
-        self._monitor_loop_task_done = None
+        # Monitor loop task (asyncio.Future)
+        self._monitor_loop_task = salobj.make_done_future()
 
     async def connect(self, connect_retry_interval=1.0):
         """Connect to the server.
@@ -123,6 +120,9 @@ class TcpClient:
 
         self.log.info("Connection is on.")
 
+        # Create the task to monitor the incoming message from server
+        self._monitor_loop_task = asyncio.create_task(self._monitor_msg())
+
     def is_connected(self):
         """Determines if the client is connected to the server.
 
@@ -138,6 +138,63 @@ class TcpClient:
             or self.reader.at_eof()
             or self.writer.is_closing()
         )
+
+    async def _monitor_msg(self, period_check=0.001):
+        """Monitor the message.
+
+        Parameters
+        ----------
+        period_check : `float`, optional
+            Period of checking the incoming messages in second. (the default is
+            0.001)
+        """
+
+        self.log.info("Begin to monitor the incoming message.")
+
+        try:
+            while True:
+                await self._put_read_msg_to_queue()
+                await asyncio.sleep(period_check)
+
+        except ConnectionError:
+            self.log.info("Reader disconnected; closing client")
+            await self._basic_close()
+
+        self.log.info("Stop to monitor the incoming message.")
+
+    async def _put_read_msg_to_queue(self):
+        """Put the read message to self.queue."""
+
+        try:
+            data = await self.reader.read(n=self.max_n_bytes)
+
+            if data is not None:
+                data_decode = data.decode()
+                msg = json.loads(data_decode)
+                self.queue.put_nowait(msg)
+
+                self._check_queue_size()
+
+        except json.JSONDecodeError:
+            self.log.debug(f"Can not decode the message: {data_decode}.")
+
+    def _check_queue_size(self):
+        """Check the size of queue and log the information if needed."""
+
+        queue_size = self.queue.qsize()
+        maxsize = self.queue.maxsize
+        if queue_size > maxsize // 2:
+            self.log.info(f"Size of queue is: {queue_size}/{maxsize}.")
+
+    async def _basic_close(self):
+        """Cancel the monitor loop and close the connection."""
+
+        # Cancel the task
+        self._monitor_loop_task.cancel()
+
+        if self.writer is not None:
+            await tcpip.close_stream_writer(self.writer)
+            self.writer = None
 
     async def write(self, msg_type, msg_name, msg_details=None, comp_name=None):
         """Writes message to the server.
@@ -159,6 +216,8 @@ class TcpClient:
         RuntimeError
             When there is no TCP/IP connection.
         ValueError
+            If 'id' is in the message details already.
+        ValueError
             When the message type is not supported.
         """
 
@@ -170,12 +229,21 @@ class TcpClient:
         else:
             msg_details_with_header = copy.copy(msg_details)
 
+        if "id" in msg_details_with_header.keys():
+            raise ValueError("The 'id' is in the message details already.")
+
         if msg_type == MsgType.Command:
-            self._add_cmd_header(msg_name, msg_details_with_header)
+            msg_details_with_header = self._add_cmd_header(
+                msg_name, msg_details_with_header
+            )
         elif msg_type == MsgType.Event:
-            self._add_evt_header(msg_name, msg_details_with_header, comp_name=comp_name)
+            msg_details_with_header = self._add_evt_header(
+                msg_name, msg_details_with_header, comp_name=comp_name
+            )
         elif msg_type == MsgType.Telemetry:
-            self._add_tel_header(msg_name, msg_details_with_header, comp_name=comp_name)
+            msg_details_with_header = self._add_tel_header(
+                msg_name, msg_details_with_header, comp_name=comp_name
+            )
         else:
             raise ValueError(f"The message type: {msg_type} is not supported.")
 
@@ -197,17 +265,16 @@ class TcpClient:
         msg_details : `dict`
             Message details.
 
-        Raises
-        ------
-        ValueError
-            If 'cmdName' is in the message details already.
+        Returns
+        -------
+        msg_details : dict
+            Message details with the header.
         """
 
-        if "cmdName" in msg_details.keys():
-            raise ValueError("The 'cmdName' is in the message details already.")
+        msg_details["id"] = "cmd_" + msg_name
+        msg_details["sequence_id"] = next(self._uniq_id)
 
-        msg_details["cmdName"] = msg_name
-        msg_details["cmdId"] = next(self._uniq_id)
+        return msg_details
 
     def _add_evt_header(self, msg_name, msg_details, comp_name=None):
         """Add the event header.
@@ -223,19 +290,18 @@ class TcpClient:
         comp_name : `str` or None, optional
             Specific component name. (the default is None)
 
-        Raises
-        ------
-        ValueError
-            If 'evtName' is in the message details already.
+        Returns
+        -------
+        msg_details : dict
+            Message details with the header.
         """
 
-        if "evtName" in msg_details.keys():
-            raise ValueError("The 'evtName' is in the message details already.")
-
-        msg_details["evtName"] = msg_name
+        msg_details["id"] = "evt_" + msg_name
 
         if comp_name is not None:
             msg_details["compName"] = comp_name
+
+        return msg_details
 
     def _add_tel_header(self, msg_name, msg_details, comp_name=None):
         """Add the telemetry header.
@@ -251,92 +317,32 @@ class TcpClient:
         comp_name : `str` or None, optional
             Specific component name. (the default is None)
 
-        Raises
-        ------
-        ValueError
-            If 'telName' is in the message details already.
+        Returns
+        -------
+        msg_details : dict
+            Message details with the header.
         """
 
-        if "telName" in msg_details.keys():
-            raise ValueError("The 'telName' is in the message details already.")
-
-        msg_details["telName"] = msg_name
+        msg_details["id"] = "tel_" + msg_name
 
         if comp_name is not None:
             msg_details["compName"] = comp_name
 
-    async def run_monitor_loop(self):
-        """Run the monitor loop. The received message from server will be put
-        into self.queue.
-        """
-
-        # Create the task's future
-        loop = asyncio.get_running_loop()
-        self._monitor_loop_task_done = loop.create_future()
-
-        # Create the task to monitor the incoming message from server
-        self._monitor_loop_task = asyncio.create_task(self._monitor_msg())
-
-        await self._monitor_loop_task_done
-
-    async def _monitor_msg(self):
-        """Monitor the message."""
-
-        self.log.info("Begin to monitor the incoming message.")
-
-        while self.is_connected():
-            await self._put_read_msg_to_queue()
-
-        self._monitor_loop_task_done.set_result("Monitor is done.")
-
-        self.log.info("Stop to monitor the incoming message.")
-
-    async def _put_read_msg_to_queue(self):
-        """Put the read message to self.queue."""
-
-        try:
-            data = await self.reader.read(n=self.max_n_bytes)
-
-            if data is not None:
-                dataDecode = data.decode()
-                message = json.loads(dataDecode)
-                self.queue.put_nowait(message)
-
-                self._check_queue_size()
-
-        except json.JSONDecodeError:
-            self.log.debug(f"Can not decode the message: {dataDecode}.")
-
-    def _check_queue_size(self):
-        """Check the size of queue and log the information if needed."""
-
-        queue_size = self.queue.qsize()
-        maxsize = self.queue.maxsize
-        if queue_size > maxsize // 2:
-            self.log.info(f"Size of queue is: {queue_size}/{maxsize}.")
+        return msg_details
 
     async def close(self):
-        """Kill the tasks and close the connection."""
+        """Cancel the task and close the connection.
+
+        Note: this function is safe to call even though there is no connection.
+        """
 
         self.log.info("Close the connection.")
 
-        # Cancel the task
-        if self._monitor_loop_task is not None:
-            self.log.debug("Cancel the monitor loop task.")
-            self._monitor_loop_task.cancel()
-
-            if not self._monitor_loop_task_done.done():
-                self._monitor_loop_task_done.cancel()
-
-        self._monitor_loop_task = None
-        self._monitor_loop_task_done = None
-
-        # Write the EOF
-        if self.writer.can_write_eof():
+        # Write the EOF and close
+        if (self.writer is not None) and self.writer.can_write_eof():
             self.writer.write_eof()
 
-        # Close the writer
-        await tcpip.close_stream_writer(self.writer)
+        await self._basic_close()
 
         # Set the reader and writer to be None
         self.reader = None
