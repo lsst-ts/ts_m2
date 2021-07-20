@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.3.5
+------
+
+* Add the **MockServer** class.
+* Update the JSON packet header in **TcpClient** class.
+
 v0.3.4
 ------
 

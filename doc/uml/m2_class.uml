@@ -1,4 +1,5 @@
 @startuml
 class TcpClient
+class MockServer
 M2 *-- Model
 @enduml
