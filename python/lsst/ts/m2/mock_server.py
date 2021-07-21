@@ -38,20 +38,17 @@ class MockServer:
 
     Parameters
     ----------
-    host : `str` or `None`
+    host : `str`
         IP address for this server; typically `LOCALHOST` for IP4
-        or "::" for IP6. If `None` then bind to all network interfaces
-        (e.g. listen on an IPv4 socket and an IPv6 socket).
-        None can cause trouble with port=0;
-        see tcpip.OneClientServer.port in Attributes for more information.
-    port_cmd : `int`
-        IP port for the command server.
-    port_tel : `int`
-        IP port for the telemetry server.
+        or "::" for IP6.
+    port_command : `int`, optional
+        IP port for the command server. (the default is 50000)
+    port_telemetry : `int`, optional
+        IP port for the telemetry server. (the default is 50001)
     log : `logging.Logger` or None, optional
         A logger. If None, a logger will be instantiated. (the default is
         None)
-    family : `socket.AddressFamily`, optional
+    socket_family : `socket.AddressFamily`, optional
         Can be set to `socket.AF_INET` or `socket.AF_INET6` to limit the server
         to IPv4 or IPv6, respectively. If `socket.AF_UNSPEC` (the default)
         the family will be determined from host, and if host is None,
@@ -61,63 +58,71 @@ class MockServer:
     ----------
     log : `logging.Logger`
         A logger.
-    server_cmd : `tcpip.OneClientServer`
+    server_command : `tcpip.OneClientServer`
         Command server.
-    server_tel : `tcpip.OneClientServer`
+    server_telemetry : `tcpip.OneClientServer`
         Telemetry server.
     """
 
-    def __init__(self, host, port_cmd, port_tel, log=None, family=socket.AF_UNSPEC):
+    def __init__(
+        self,
+        host,
+        port_command=50000,
+        port_telemetry=50001,
+        log=None,
+        socket_family=socket.AF_UNSPEC,
+    ):
 
-        # Set the logger
         if log is None:
             self.log = logging.getLogger(type(self).__name__)
         else:
             self.log = log.getChild(type(self).__name__)
 
-        self.server_cmd = tcpip.OneClientServer(
+        self.server_command = tcpip.OneClientServer(
             "Commands",
             host,
-            port_cmd,
+            port_command,
             self.log,
-            self._connect_callback_cmd,
-            family=family,
+            self._connect_state_changed_callback_command,
+            family=socket_family,
         )
-        self.server_tel = tcpip.OneClientServer(
+        self.server_telemetry = tcpip.OneClientServer(
             "Telemetry",
             host,
-            port_tel,
+            port_telemetry,
             self.log,
-            self._connect_callback_tel,
-            family=family,
+            self._connect_state_changed_callback_telemetry,
+            family=socket_family,
         )
 
-        # Monitor loop task of command server (asyncio.Future)
-        self._monitor_loop_task_cmd = salobj.make_done_future()
+        # Following two attributes have the type of asyncio.Future
+        self._monitor_loop_task_command = salobj.make_done_future()
+        self._monitor_loop_task_telemetry = salobj.make_done_future()
 
-        # Monitor loop task of telemetry server (asyncio.Future)
-        self._monitor_loop_task_tel = salobj.make_done_future()
-
-        # Send the one-time message
-        self._send_one_time_msg_done = False
+        # This is used to send the initial messages when the connection is just
+        # on. Check the self._send_welcome_message() for the details.
+        self._welcome_message_sent = False
 
         # System is in the Enabled state or not
-        self._is_enabled = False
+        # TODO: This attribute will be removed in the work of DM-30851
+        self._system_enabled = False
 
-    def _connect_callback_cmd(self, server_cmd):
+    def _connect_state_changed_callback_command(self, server_command):
         """Called when the command server connection state changes.
 
         Parameters
         ----------
-        server_cmd : `tcpip.OneClientServer`
+        server_command : `tcpip.OneClientServer`
             Command server.
         """
-        self._monitor_loop_task_cmd.cancel()
+        self._monitor_loop_task_command.cancel()
 
-        if self.server_cmd.connected:
-            self._monitor_loop_task_cmd = asyncio.create_task(self._monitor_msg_cmd())
+        if self.server_command.connected:
+            self._monitor_loop_task_command = asyncio.create_task(
+                self._monitor_message_command()
+            )
 
-    async def _monitor_msg_cmd(self, period_check=0.001):
+    async def _monitor_message_command(self, period_check=0.001):
         """Monitor the message of incoming command.
 
         Parameters
@@ -130,38 +135,42 @@ class MockServer:
         try:
             while True:
 
-                if not self._send_one_time_msg_done:
-                    await self._send_one_time_msg()
-                    self._send_one_time_msg_done = True
+                if not self._welcome_message_sent:
+                    await self._send_welcome_message()
+                    self._welcome_message_sent = True
 
-                if self.server_cmd.reader.at_eof():
+                if self.server_command.reader.at_eof():
                     self.log.info("Command reader at eof; closing client")
                     break
 
-                await self._process_msg_cmd(period_check)
+                await self._process_message_command(period_check)
 
         except ConnectionError:
             self.log.info("Command reader disconnected; closing client")
-            self._monitor_loop_task_cmd.cancel()
+            self._monitor_loop_task_command.cancel()
 
-        await self.server_cmd.close_client()
+        await self.server_command.close_client()
 
-    async def _send_one_time_msg(self):
-        """Send the one-time message."""
+    async def _send_welcome_message(self):
+        """Send the welcome message.
+
+        Most of messages are just the events to describe the system status and
+        configuration.
+        """
 
         # Part of telemetry implementation will be updated in DM-30851
         # to finish. For example, the temp_offset and inclination source
 
-        await self._write_msg_tcp_ip_connected(True)
-        await self._write_msg_commandable_by_dds(True)
-        await self._write_msg_hardpoint_list([6, 16, 26, 74, 76, 78])
-        await self._write_msg_interlock(False)
-        await self._write_msg_inclination_telemetry_source(
+        await self._write_message_tcp_ip_connected(True)
+        await self._write_message_commandable_by_dds(True)
+        await self._write_message_hardpoint_list([6, 16, 26, 74, 76, 78])
+        await self._write_message_interlock(False)
+        await self._write_message_inclination_telemetry_source(
             MTM2.InclinationTelemetrySource.ONBOARD
         )
 
         temp_offset = 21.0
-        await self._write_msg_temperature_offset(
+        await self._write_message_temperature_offset(
             [temp_offset] * 12,
             [temp_offset] * 2,
             [temp_offset] * 2,
@@ -169,11 +178,11 @@ class MockServer:
 
         # Sleep time is to simulate some internal inspection of
         # real system
-        await self._write_msg_detailed_state(DetailedState.PublishOnly)
+        await self._write_message_detailed_state(DetailedState.PublishOnly)
         await asyncio.sleep(0.01)
-        await self._write_msg_detailed_state(DetailedState.Available)
+        await self._write_message_detailed_state(DetailedState.Available)
 
-    async def _process_msg_cmd(self, period_check):
+    async def _process_message_command(self, period_check):
         """Process the incoming message of command.
 
         Parameters
@@ -182,38 +191,38 @@ class MockServer:
             Period of checking the incoming messages in second.
         """
 
-        msg_input = await self.server_cmd.reader.read(n=1000)
-        msg = self._decode_incoming_msg(msg_input)
+        msg_input = await self.server_command.reader.read(n=1000)
+        msg = self._decode_incoming_message(msg_input)
 
         # Acknowledge the command
         name = msg["id"]
         sequence_id = msg["sequence_id"]
-        if self._is_cmd(name):
+        if self._is_command(name):
             id_ack = CommandStatus.Ack
             msg_ack = {"id": id_ack.name.lower(), "sequence_id": sequence_id}
-            await self._write_json_packet(self.server_cmd.writer, msg_ack)
+            await self._write_json_packet(self.server_command.writer, msg_ack)
 
         # Process the command
         # Parts of command will wait the DM-30851 to finish
         if name == "cmd_enable":
-            await self._write_msg_force_balance_system_status(True)
+            await self._write_message_force_balance_system_status(True)
 
             # Simulate the real hardware behavior
             await asyncio.sleep(5)
 
-            self._is_enabled = True
+            self._system_enabled = True
 
         elif name == "cmd_disable":
-            await self._write_msg_force_balance_system_status(False)
+            await self._write_message_force_balance_system_status(False)
 
-            self._is_enabled = False
+            self._system_enabled = False
 
         elif name == "cmd_exitControl":
             # Sleep time is to simulate some internal inspection of real system
             await asyncio.sleep(0.01)
-            await self._write_msg_detailed_state(DetailedState.PublishOnly)
+            await self._write_message_detailed_state(DetailedState.PublishOnly)
             await asyncio.sleep(0.01)
-            await self._write_msg_detailed_state(DetailedState.Available)
+            await self._write_message_detailed_state(DetailedState.Available)
 
         elif name == "cmd_applyForces":
             pass
@@ -228,27 +237,27 @@ class MockServer:
             pass
 
         elif name == "cmd_switchForceBalanceSystem":
-            await self._write_msg_force_balance_system_status(msg["status"])
+            await self._write_message_force_balance_system_status(msg["status"])
 
         elif name == "cmd_selectInclinationSource":
-            await self._write_msg_inclination_telemetry_source(
+            await self._write_message_inclination_telemetry_source(
                 MTM2.InclinationTelemetrySource(msg["source"])
             )
 
         elif name == "cmd_setTemperatureOffset":
-            await self._write_msg_temperature_offset(
+            await self._write_message_temperature_offset(
                 msg["ring"], msg["intake"], msg["exhaust"]
             )
 
         # Command result
-        if self._is_cmd(name):
+        if self._is_command(name):
             id_success = CommandStatus.Success
             msg_success = {"id": id_success.name.lower(), "sequence_id": sequence_id}
-            await self._write_json_packet(self.server_cmd.writer, msg_success)
+            await self._write_json_packet(self.server_command.writer, msg_success)
 
         await asyncio.sleep(period_check)
 
-    def _decode_incoming_msg(self, msg_encode):
+    def _decode_incoming_message(self, msg_encode):
         """Decode the incoming message.
 
         Parameters
@@ -277,7 +286,7 @@ class MockServer:
             self.log.debug(f"Can not decode the message: {msg_decode}.")
             return dict()
 
-    def _is_cmd(self, id_value):
+    def _is_command(self, id_value):
         """Is the command or not.
 
         Parameters
@@ -293,20 +302,22 @@ class MockServer:
 
         return "cmd_" in id_value
 
-    def _connect_callback_tel(self, server_tel):
+    def _connect_state_changed_callback_telemetry(self, server_telemetry):
         """Called when the telemetry server connection state changes.
 
         Parameters
         ----------
-        server_tel : `tcpip.OneClientServer`
+        server_telemetry : `tcpip.OneClientServer`
             Telemetry server.
         """
-        self._monitor_loop_task_tel.cancel()
+        self._monitor_loop_task_telemetry.cancel()
 
-        if self.server_tel.connected:
-            self._monitor_loop_task_tel = asyncio.create_task(self._monitor_msg_tel())
+        if self.server_telemetry.connected:
+            self._monitor_loop_task_telemetry = asyncio.create_task(
+                self._monitor_message_telemetry()
+            )
 
-    async def _monitor_msg_tel(self, period_tel=0.05, period_check=0.001):
+    async def _monitor_message_telemetry(self, period_tel=0.05, period_check=0.001):
         """Monitor the message of incoming telemetry.
 
         Parameters
@@ -322,21 +333,21 @@ class MockServer:
         try:
             while True:
 
-                await self._write_msg_tel(period_tel)
+                await self._write_message_telemetry(period_tel)
 
-                if self.server_tel.reader.at_eof():
+                if self.server_telemetry.reader.at_eof():
                     self.log.info("Telemetry reader at eof; closing client")
                     break
 
-                await self._process_msg_tel(period_check)
+                await self._process_message_telemetry(period_check)
 
         except ConnectionError:
             self.log.info("Telemetry reader disconnected; closing client")
-            self._monitor_loop_task_tel.cancel()
+            self._monitor_loop_task_telemetry.cancel()
 
-        await self.server_tel.close_client()
+        await self.server_telemetry.close_client()
 
-    async def _write_msg_tel(self, period):
+    async def _write_message_telemetry(self, period):
         """Write the telemetry message.
 
         Parameters
@@ -346,14 +357,14 @@ class MockServer:
         """
 
         # Most of telemetry will wait the DM-30851 to finish
-        if self._is_enabled:
-            await self._write_msg_power_status()
+        if self._system_enabled:
+            await self._write_message_power_status()
         else:
-            await self._write_msg_power_status(motor_voltage=0.0, motor_current=0.0)
+            await self._write_message_power_status(motor_voltage=0.0, motor_current=0.0)
 
         await asyncio.sleep(period)
 
-    async def _process_msg_tel(self, period_check):
+    async def _process_message_telemetry(self, period_check):
         """Process the incoming message of telemetry.
 
         Parameters
@@ -364,9 +375,9 @@ class MockServer:
 
         try:
             msg = await asyncio.wait_for(
-                self.server_tel.reader.read(n=1000), period_check
+                self.server_telemetry.reader.read(n=1000), period_check
             )
-            msg_tel = self._decode_incoming_msg(msg)
+            msg_tel = self._decode_incoming_message(msg)
 
             # Most of telemetry will wait the DM-30851 to finish
             name = msg_tel["id"]
@@ -384,11 +395,13 @@ class MockServer:
         bool
             True if is connected. Else, False.
         """
-        return self.server_cmd.connected and self.server_tel.connected
+        return self.server_command.connected and self.server_telemetry.connected
 
     async def start(self):
         """Start the command and telemetry TCP/IP servers."""
-        await asyncio.gather(self.server_cmd.start_task, self.server_tel.start_task)
+        await asyncio.gather(
+            self.server_command.start_task, self.server_telemetry.start_task
+        )
 
     async def close(self):
         """Cancel the tasks and close the connections.
@@ -397,15 +410,16 @@ class MockServer:
         """
 
         # Cancel the tasks
-        self._monitor_loop_task_cmd.cancel()
-        self._monitor_loop_task_tel.cancel()
+        self._monitor_loop_task_command.cancel()
+        self._monitor_loop_task_telemetry.cancel()
 
         # Close the servers
-        await self.server_cmd.close()
-        await self.server_tel.close()
+        await self.server_command.close()
+        await self.server_telemetry.close()
 
-        self._send_one_time_msg_done = False
-        self._is_enabled = False
+        # Reset some attributes
+        self._welcome_message_sent = False
+        self._system_enabled = False
 
     async def _write_json_packet(self, writer, msg_input, sleep_time=0.001):
         """Write the json packet.
@@ -418,7 +432,7 @@ class MockServer:
             Input message.
         sleep_time : `float`, optional
             Sleep time after writing the message. This value should be >=
-            period_check in TcpClient._monitor_msg(). (the default is 0.001)
+            period_check in TcpClient._monitor_message(). (the default is 0.001)
         """
 
         # Transfer to json string and do the encode
@@ -429,7 +443,7 @@ class MockServer:
 
         await asyncio.sleep(sleep_time)
 
-    async def _write_msg_m2_assembly_in_position(self, in_position):
+    async def _write_message_m2_assembly_in_position(self, in_position):
         """Write the message: M2 assembly is in position or not.
 
         Parameters
@@ -439,9 +453,9 @@ class MockServer:
         """
 
         msg = {"id": "m2AssemblyInPosition", "inPosition": in_position}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_cell_temperature_high_warning(self, hi_warning):
+    async def _write_message_cell_temperature_high_warning(self, hi_warning):
         """Write the message: cell temperature is high or not.
 
         Parameters
@@ -451,9 +465,9 @@ class MockServer:
         """
 
         msg = {"id": "cellTemperatureHiWarning", "hiWarning": hi_warning}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_detailed_state(self, detailed_state):
+    async def _write_message_detailed_state(self, detailed_state):
         """Write the message: detailed state.
 
         Parameters
@@ -463,9 +477,9 @@ class MockServer:
         """
 
         msg = {"id": "detailedState", "detailedState": int(detailed_state)}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_commandable_by_dds(self, state):
+    async def _write_message_commandable_by_dds(self, state):
         """Write the message: commandable by DDS or not.
 
         Parameters
@@ -475,9 +489,9 @@ class MockServer:
         """
 
         msg = {"id": "commandableByDDS", "state": state}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_interlock(self, state):
+    async def _write_message_interlock(self, state):
         """Write the message: interlock.
 
         Parameters
@@ -487,9 +501,9 @@ class MockServer:
         """
 
         msg = {"id": "interlock", "state": state}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_tcp_ip_connected(self, is_connected):
+    async def _write_message_tcp_ip_connected(self, is_connected):
         """Write the message: TCP/IP connection is on or not.
 
         Parameters
@@ -499,9 +513,9 @@ class MockServer:
         """
 
         msg = {"id": "tcpIpConnected", "isConnected": is_connected}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_hardpoint_list(self, actuators):
+    async def _write_message_hardpoint_list(self, actuators):
         """Write the message: hardpoint list.
 
         Parameters
@@ -511,9 +525,9 @@ class MockServer:
         """
 
         msg = {"id": "hardpointList", "actuators": actuators}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_force_balance_system_status(self, status):
+    async def _write_message_force_balance_system_status(self, status):
         """Write the message: force balance system is on or not.
 
         Parameters
@@ -523,9 +537,9 @@ class MockServer:
         """
 
         msg = {"id": "forceBalanceSystemStatus", "status": status}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_inclination_telemetry_source(self, source):
+    async def _write_message_inclination_telemetry_source(self, source):
         """Write the message: inclination telemetry source.
 
         Parameters
@@ -535,9 +549,9 @@ class MockServer:
         """
 
         msg = {"id": "inclinationTelemetrySource", "source": int(source)}
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_temperature_offset(self, ring, intake, exhaust):
+    async def _write_message_temperature_offset(self, ring, intake, exhaust):
         """Write the message: temperature offset in degree C.
 
         Parameters
@@ -556,9 +570,9 @@ class MockServer:
             "intake": intake,
             "exhaust": exhaust,
         }
-        await self._write_json_packet(self.server_cmd.writer, msg)
+        await self._write_json_packet(self.server_command.writer, msg)
 
-    async def _write_msg_position(self, x, y, z, x_rot, y_rot, z_rot):
+    async def _write_message_position(self, x, y, z, x_rot, y_rot, z_rot):
         """Write the message: M2 position by the actuator positions.
 
         Parameters
@@ -586,9 +600,9 @@ class MockServer:
             "yRot": y_rot,
             "zRot": z_rot,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_position_ims(self, x, y, z, x_rot, y_rot, z_rot):
+    async def _write_message_position_ims(self, x, y, z, x_rot, y_rot, z_rot):
         """Write the message: M2 position by the independent measurement system
         (IMS).
 
@@ -617,9 +631,9 @@ class MockServer:
             "yRot": y_rot,
             "zRot": z_rot,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_axial_force(
+    async def _write_message_axial_force(
         self, lut_gravity, lut_temperature, applied, measured, hardpoint_correction
     ):
         """Write the message: axial force in Newton.
@@ -646,9 +660,9 @@ class MockServer:
             "measured": measured,
             "hardpointCorrection": hardpoint_correction,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_tangent_force(
+    async def _write_message_tangent_force(
         self, lut_gravity, lut_temperature, applied, measured, hardpoint_correction
     ):
         """Write the message: tangent force in Newton.
@@ -675,9 +689,9 @@ class MockServer:
             "measured": measured,
             "hardpointCorrection": hardpoint_correction,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_temperature(self, ring, intake, exhaust):
+    async def _write_message_temperature(self, ring, intake, exhaust):
         """Write the message: cell temperature in degree C.
 
         Parameters
@@ -696,9 +710,9 @@ class MockServer:
             "intake": intake,
             "exhaust": exhaust,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_zenith_angle(
+    async def _write_message_zenith_angle(
         self, measured, inclinometer_raw, inclinometer_processed
     ):
         """Write the message: zenith angle in degree.
@@ -719,9 +733,9 @@ class MockServer:
             "inclinometerRaw": inclinometer_raw,
             "inclinometerProcessed": inclinometer_processed,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_axial_actuator_steps(self, steps):
+    async def _write_message_axial_actuator_steps(self, steps):
         """Write the message: axial actuator steps.
 
         Parameters
@@ -734,9 +748,9 @@ class MockServer:
             "id": "axialActuatorSteps",
             "steps": steps,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_tangent_actuator_steps(self, steps):
+    async def _write_message_tangent_actuator_steps(self, steps):
         """Write the message: tangent actuator steps.
 
         Parameters
@@ -749,9 +763,9 @@ class MockServer:
             "id": "tangentActuatorSteps",
             "steps": steps,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_axial_encoder_positions(self, position):
+    async def _write_message_axial_encoder_positions(self, position):
         """Write the message: axial actuator encoder positions in micron.
 
         Parameters
@@ -764,9 +778,9 @@ class MockServer:
             "id": "axialEncoderPositions",
             "position": position,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_tangent_encoder_positions(self, position):
+    async def _write_message_tangent_encoder_positions(self, position):
         """Write the message: tangent actuator encoder positions in micron.
 
         Parameters
@@ -779,9 +793,9 @@ class MockServer:
             "id": "tangentEncoderPositions",
             "position": position,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_ilc_data(self, status):
+    async def _write_message_ilc_data(self, status):
         """Write the message: inner-loop controller (ILC) data.
 
         Parameters
@@ -794,9 +808,9 @@ class MockServer:
             "id": "ilcData",
             "status": status,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_displacement_sensors(self, theta_z, delta_z):
+    async def _write_message_displacement_sensors(self, theta_z, delta_z):
         """Write the message: raw measurements from displacement sensors.
 
         Parameters
@@ -812,9 +826,9 @@ class MockServer:
             "thetaZ": theta_z,
             "deltaZ": delta_z,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_force_balance(self, fx, fy, fz, mx, my, mz):
+    async def _write_message_force_balance(self, fx, fy, fz, mx, my, mz):
         """Write the message: net forces and moments as commanded by the force
         balance system.
 
@@ -843,9 +857,9 @@ class MockServer:
             "my": my,
             "mz": mz,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_net_forces_total(self, fx, fy, fz):
+    async def _write_message_net_forces_total(self, fx, fy, fz):
         """Write the message: total actuator net forces in Newton.
 
         Parameters
@@ -864,9 +878,9 @@ class MockServer:
             "fy": fy,
             "fz": fz,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_net_moments_total(self, mx, my, mz):
+    async def _write_message_net_moments_total(self, mx, my, mz):
         """Write the message: total actuator net moments of force in
         Newton * meter.
 
@@ -886,9 +900,9 @@ class MockServer:
             "my": my,
             "mz": mz,
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)
 
-    async def _write_msg_power_status(
+    async def _write_message_power_status(
         self,
         motor_voltage=23.0,
         motor_current=8.5,
@@ -921,4 +935,4 @@ class MockServer:
             "commVoltage": comm_voltage + rms_power[2],
             "commCurrent": comm_current + rms_power[3],
         }
-        await self._write_json_packet(self.server_tel.writer, msg)
+        await self._write_json_packet(self.server_telemetry.writer, msg)

@@ -43,7 +43,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
     async def make_server(self):
         """Instantiate the mock server of M2 for the test."""
 
-        server = MockServer(self.host, 0, 0, log=self.log)
+        server = MockServer(self.host, port_command=0, port_telemetry=0, log=self.log)
         await server.start()
 
         try:
@@ -51,8 +51,8 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
         finally:
             await server.close()
 
-        self.assertFalse(server._send_one_time_msg_done)
-        self.assertFalse(server._is_enabled)
+        self.assertFalse(server._welcome_message_sent)
+        self.assertFalse(server._system_enabled)
 
     @contextlib.asynccontextmanager
     async def make_clients(self, server):
@@ -63,14 +63,14 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
         """
 
         client_cmd = TcpClient(
-            server.server_cmd.host,
-            server.server_cmd.port,
+            server.server_command.host,
+            server.server_command.port,
             log=self.log,
             maxsize_queue=self.maxsize_queue,
         )
         client_tel = TcpClient(
-            server.server_tel.host,
-            server.server_tel.port,
+            server.server_telemetry.host,
+            server.server_telemetry.port,
             log=self.log,
             maxsize_queue=self.maxsize_queue,
         )
@@ -206,7 +206,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(8)
             self.assertEqual(client_cmd.queue.qsize(), 1)
 
-            self.assertTrue(server._is_enabled)
+            self.assertTrue(server._system_enabled)
 
     async def test_cmd_disable(self):
         async with self.make_server() as server, self.make_clients(server) as (
