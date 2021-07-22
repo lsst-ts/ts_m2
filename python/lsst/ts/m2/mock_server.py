@@ -66,6 +66,11 @@ class MockServer:
         Telemetry server.
     """
 
+    # 20 Hz (= 0.05 second)
+    PERIOD_TELEMETRY_IN_SECOND = 0.05
+
+    TIMEOUT_IN_SECOND = 0.01
+
     def __init__(
         self,
         host,
@@ -124,14 +129,8 @@ class MockServer:
                 self._monitor_message_command()
             )
 
-    async def _monitor_message_command(self, timeout=0.05):
-        """Monitor the message of incoming command.
-
-        Parameters
-        ----------
-        timeout : `float`, optional
-            Timeout in second. (the default is 0.05)
-        """
+    async def _monitor_message_command(self):
+        """Monitor the message of incoming command."""
 
         try:
             while self.server_command.connected:
@@ -144,7 +143,7 @@ class MockServer:
                     self.log.info("Command reader at eof; stopping monitor loop.")
                     break
 
-                await self._process_message_command(timeout)
+                await self._process_message_command()
 
         except ConnectionError:
             self.log.info("Command reader disconnected.")
@@ -184,19 +183,13 @@ class MockServer:
         await asyncio.sleep(0.01)
         await self._write_message_detailed_state(DetailedState.Available)
 
-    async def _process_message_command(self, timeout):
-        """Process the incoming message of command.
-
-        Parameters
-        ----------
-        timeout : `float`
-            Timeout in second.
-        """
+    async def _process_message_command(self):
+        """Process the incoming message of command."""
 
         try:
             msg_input = await asyncio.wait_for(
                 self.server_command.reader.readuntil(separator=tcpip.TERMINATOR),
-                timeout,
+                self.TIMEOUT_IN_SECOND,
             )
 
             msg = self._decode_and_deserialize_json_message(msg_input)
@@ -267,7 +260,7 @@ class MockServer:
                 await write_json_packet(self.server_command.writer, msg_success)
 
         except asyncio.TimeoutError:
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(self.TIMEOUT_IN_SECOND)
 
     def _decode_and_deserialize_json_message(self, msg_encode):
         """Decode the incoming JSON message and return a dictionary.
@@ -284,18 +277,11 @@ class MockServer:
             JSON, return an empty dictionary.
         """
 
-        # Decode the message
-        if msg_encode is None:
-            return dict()
-        else:
-            msg_decode = msg_encode.decode()
-
-        # Decode by JSON
         try:
-            return json.loads(msg_decode)
+            return json.loads(msg_encode.decode()) if msg_encode is not None else dict()
 
         except json.JSONDecodeError:
-            self.log.debug(f"Can not decode the message: {msg_decode}.")
+            self.log.debug(f"Can not decode the message: {msg_encode}.")
             return dict()
 
     def _is_command(self, message_name):
@@ -329,29 +315,20 @@ class MockServer:
                 self._monitor_message_telemetry()
             )
 
-    async def _monitor_message_telemetry(self, period_tel=0.05, timeout=0.01):
-        """Monitor the message of incoming telemetry.
-
-        Parameters
-        ----------
-        period_tel : `float`, optional
-            Telemetry period in second. The frequency is 20 Hz usually. (the
-            default is 0.05)
-        timeout : `float`, optional
-            Timeout in second. (the default is 0.01)
-        """
+    async def _monitor_message_telemetry(self):
+        """Monitor the message of incoming telemetry."""
 
         try:
             while self.server_telemetry.connected:
 
                 await self._write_message_telemetry()
-                await asyncio.sleep(period_tel)
+                await asyncio.sleep(self.PERIOD_TELEMETRY_IN_SECOND)
 
                 if self.server_telemetry.reader.at_eof():
                     self.log.info("Telemetry reader at eof; stopping monitor loop.")
                     break
 
-                await self._process_message_telemetry(timeout)
+                await self._process_message_telemetry()
 
         except ConnectionError:
             self.log.info("Telemetry reader disconnected.")
@@ -369,19 +346,13 @@ class MockServer:
         else:
             await self._write_message_power_status(motor_voltage=0.0, motor_current=0.0)
 
-    async def _process_message_telemetry(self, timeout):
-        """Read and process data from telemetry server.
-
-        Parameters
-        ----------
-        timeout : `float`
-            Timeout in second.
-        """
+    async def _process_message_telemetry(self):
+        """Read and process data from telemetry server."""
 
         try:
             msg = await asyncio.wait_for(
                 self.server_telemetry.reader.readuntil(separator=tcpip.TERMINATOR),
-                timeout,
+                self.TIMEOUT_IN_SECOND,
             )
             msg_tel = self._decode_and_deserialize_json_message(msg)
 
@@ -392,7 +363,7 @@ class MockServer:
                 pass
 
         except asyncio.TimeoutError:
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(self.TIMEOUT_IN_SECOND)
 
     def are_servers_connected(self):
         """The command and telemetry sockets are connected or not.

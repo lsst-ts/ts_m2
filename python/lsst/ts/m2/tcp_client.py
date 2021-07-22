@@ -63,6 +63,8 @@ class TcpClient:
         Queue of the message.
     """
 
+    TIMEOUT_IN_SECOND = 0.05
+
     def __init__(self, host, port, log=None, maxsize_queue=1000):
 
         # Connection information
@@ -133,20 +135,14 @@ class TcpClient:
             or self.writer.is_closing()
         )
 
-    async def _monitor_msg(self, timeout=0.05):
-        """Monitor the message.
-
-        Parameters
-        ----------
-        timeout : `float`, optional
-            Timeout in second. (the default is 0.05)
-        """
+    async def _monitor_msg(self):
+        """Monitor the message."""
 
         self.log.info("Begin to monitor the incoming message.")
 
         try:
             while self.is_connected():
-                await self._put_read_msg_to_queue(timeout)
+                await self._put_read_msg_to_queue()
 
         except ConnectionError:
             self.log.info("Reader disconnected; closing client")
@@ -154,19 +150,13 @@ class TcpClient:
 
         self.log.info("Stop to monitor the incoming message.")
 
-    async def _put_read_msg_to_queue(self, timeout):
-        """Put the read message to self.queue.
-
-        Parameters
-        ----------
-        timeout : `float`
-            Timeout in second.
-        """
+    async def _put_read_msg_to_queue(self):
+        """Put the read message to self.queue."""
 
         try:
             data = await asyncio.wait_for(
                 self.reader.readuntil(separator=tcpip.TERMINATOR),
-                timeout,
+                self.TIMEOUT_IN_SECOND,
             )
 
             if data is not None:
@@ -177,7 +167,7 @@ class TcpClient:
                 self._check_queue_size()
 
         except asyncio.TimeoutError:
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(self.TIMEOUT_IN_SECOND)
 
         except json.JSONDecodeError:
             self.log.debug(f"Can not decode the message: {data_decode}.")
