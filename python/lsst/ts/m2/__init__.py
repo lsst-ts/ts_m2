@@ -31,4 +31,7 @@ from .utility import *
 from .tcp_client import *
 from .model import *
 from .csc import *
+from .mock_message_telemetry import *
+from .mock_message_event import *
+from .mock_command import *
 from .mock_server import *

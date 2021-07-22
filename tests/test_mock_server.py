@@ -52,7 +52,11 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             await server.close()
 
         self.assertFalse(server._welcome_message_sent)
-        self.assertFalse(server._system_enabled)
+
+        self.assertIsNone(server._message_event)
+        self.assertIsNone(server._message_telemetry)
+
+        self.assertFalse(server._command.system_enabled)
 
     @contextlib.asynccontextmanager
     async def make_clients(self, server):
@@ -149,7 +153,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             client_cmd,
             client_tel,
         ):
-            await client_cmd.write(MsgType.Command, "enterControl")
+            await client_cmd.write(MsgType.Command, "applyForces")
             await asyncio.sleep(0.5)
 
             queue = self._skip_init_events(client_cmd.queue, 8)
@@ -206,7 +210,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(8)
             self.assertEqual(client_cmd.queue.qsize(), 1)
 
-            self.assertTrue(server._system_enabled)
+            self.assertTrue(server._command.system_enabled)
 
     async def test_cmd_disable(self):
         async with self.make_server() as server, self.make_clients(server) as (
