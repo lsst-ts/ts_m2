@@ -83,12 +83,12 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             await client_cmd.close()
             await client_tel.close()
 
-    async def test_is_connected(self):
+    async def test_are_servers_connected(self):
         async with self.make_server() as server, self.make_clients(server) as (
             client_cmd,
             client_tel,
         ):
-            self.assertTrue(server.is_connected())
+            self.assertTrue(server.are_servers_connected())
 
             # Check the one-time message
             await asyncio.sleep(0.5)

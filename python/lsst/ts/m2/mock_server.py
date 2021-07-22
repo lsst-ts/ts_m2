@@ -25,8 +25,10 @@ import json
 import asyncio
 import numpy as np
 
-from lsst.ts import salobj, tcpip
+from lsst.ts import salobj
+from lsst.ts import tcpip
 from lsst.ts.idl.enums import MTM2
+
 from . import CommandStatus, DetailedState
 
 
@@ -133,31 +135,34 @@ class MockServer:
         """
 
         try:
-            while True:
+            while self.server_command.connected:
 
                 if not self._welcome_message_sent:
                     await self._send_welcome_message()
                     self._welcome_message_sent = True
 
                 if self.server_command.reader.at_eof():
-                    self.log.info("Command reader at eof; closing client")
+                    self.log.info("Command reader at eof; stopping monitor loop.")
                     break
 
-                await self._process_message_command(period_check)
+                await self._process_message_command()
+
+                await asyncio.sleep(period_check)
 
         except ConnectionError:
-            self.log.info("Command reader disconnected; closing client")
+            self.log.info("Command reader disconnected.")
             self._monitor_loop_task_command.cancel()
 
         await self.server_command.close_client()
 
     async def _send_welcome_message(self):
-        """Send the welcome message.
+        """Send the welcome message to describe the system status and
+        configuration..
 
-        Most of messages are just the events to describe the system status and
-        configuration.
+        Most of messages are just the events.
         """
 
+        # TODO (DM-30851):
         # Part of telemetry implementation will be updated in DM-30851
         # to finish. For example, the temp_offset and inclination source
 
@@ -182,17 +187,11 @@ class MockServer:
         await asyncio.sleep(0.01)
         await self._write_message_detailed_state(DetailedState.Available)
 
-    async def _process_message_command(self, period_check):
-        """Process the incoming message of command.
-
-        Parameters
-        ----------
-        period_check : `float`
-            Period of checking the incoming messages in second.
-        """
+    async def _process_message_command(self):
+        """Process the incoming message of command."""
 
         msg_input = await self.server_command.reader.read(n=1000)
-        msg = self._decode_incoming_message(msg_input)
+        msg = self._decode_and_deserialize_json_message(msg_input)
 
         # Acknowledge the command
         name = msg["id"]
@@ -255,10 +254,8 @@ class MockServer:
             msg_success = {"id": id_success.name.lower(), "sequence_id": sequence_id}
             await self._write_json_packet(self.server_command.writer, msg_success)
 
-        await asyncio.sleep(period_check)
-
-    def _decode_incoming_message(self, msg_encode):
-        """Decode the incoming message.
+    def _decode_and_deserialize_json_message(self, msg_encode):
+        """Decode the incoming JSON message and return a dictionary.
 
         Parameters
         ----------
@@ -286,13 +283,13 @@ class MockServer:
             self.log.debug(f"Can not decode the message: {msg_decode}.")
             return dict()
 
-    def _is_command(self, id_value):
+    def _is_command(self, message_name):
         """Is the command or not.
 
         Parameters
         ----------
-        id_value : `str`
-            ID value.
+        message_name : `str`
+            Message name in the header.
 
         Returns
         -------
@@ -300,7 +297,7 @@ class MockServer:
             True if this is a command.
         """
 
-        return "cmd_" in id_value
+        return message_name.startswith("cmd_")
 
     def _connect_state_changed_callback_telemetry(self, server_telemetry):
         """Called when the telemetry server connection state changes.
@@ -331,41 +328,35 @@ class MockServer:
         """
 
         try:
-            while True:
+            while self.server_telemetry.connected:
 
-                await self._write_message_telemetry(period_tel)
+                await self._write_message_telemetry()
+                await asyncio.sleep(period_tel)
 
                 if self.server_telemetry.reader.at_eof():
-                    self.log.info("Telemetry reader at eof; closing client")
+                    self.log.info("Telemetry reader at eof; stopping monitor loop.")
                     break
 
                 await self._process_message_telemetry(period_check)
 
         except ConnectionError:
-            self.log.info("Telemetry reader disconnected; closing client")
+            self.log.info("Telemetry reader disconnected.")
             self._monitor_loop_task_telemetry.cancel()
 
         await self.server_telemetry.close_client()
 
-    async def _write_message_telemetry(self, period):
-        """Write the telemetry message.
+    async def _write_message_telemetry(self):
+        """Write the telemetry message."""
 
-        Parameters
-        ----------
-        period : `float`
-            Period of telemetry in second.
-        """
-
-        # Most of telemetry will wait the DM-30851 to finish
+        # TODO(DM-30851):
+        # Most of telemetry will be implemented in the DM-30851
         if self._system_enabled:
             await self._write_message_power_status()
         else:
             await self._write_message_power_status(motor_voltage=0.0, motor_current=0.0)
 
-        await asyncio.sleep(period)
-
     async def _process_message_telemetry(self, period_check):
-        """Process the incoming message of telemetry.
+        """Read and process data from telemetry server.
 
         Parameters
         ----------
@@ -377,9 +368,10 @@ class MockServer:
             msg = await asyncio.wait_for(
                 self.server_telemetry.reader.read(n=1000), period_check
             )
-            msg_tel = self._decode_incoming_message(msg)
+            msg_tel = self._decode_and_deserialize_json_message(msg)
 
-            # Most of telemetry will wait the DM-30851 to finish
+            # TODO (DM-30851):
+            # Most of telemetry will be implemented in the DM-30851
             name = msg_tel["id"]
             if name == "tel_elevation":
                 pass
@@ -387,13 +379,13 @@ class MockServer:
         except asyncio.TimeoutError:
             pass
 
-    def is_connected(self):
+    def are_servers_connected(self):
         """The command and telemetry sockets are connected or not.
 
         Returns
         -------
         bool
-            True if is connected. Else, False.
+            True if servers are connected. Else, False.
         """
         return self.server_command.connected and self.server_telemetry.connected
 
@@ -409,11 +401,9 @@ class MockServer:
         Note: this function is safe to call even though there is no connection.
         """
 
-        # Cancel the tasks
         self._monitor_loop_task_command.cancel()
         self._monitor_loop_task_telemetry.cancel()
 
-        # Close the servers
         await self.server_command.close()
         await self.server_telemetry.close()
 
@@ -432,7 +422,8 @@ class MockServer:
             Input message.
         sleep_time : `float`, optional
             Sleep time after writing the message. This value should be >=
-            period_check in TcpClient._monitor_message(). (the default is 0.001)
+            period_check in TcpClient._monitor_message(). (the default is
+            0.001)
         """
 
         # Transfer to json string and do the encode
