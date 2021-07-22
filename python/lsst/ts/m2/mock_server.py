@@ -124,14 +124,13 @@ class MockServer:
                 self._monitor_message_command()
             )
 
-    async def _monitor_message_command(self, period_check=0.001):
+    async def _monitor_message_command(self, timeout=0.05):
         """Monitor the message of incoming command.
 
         Parameters
         ----------
-        period_check : `float`, optional
-            Period of checking the incoming messages in second. (the default is
-            0.001)
+        timeout : `float`, optional
+            Timeout in second. (the default is 0.05)
         """
 
         try:
@@ -145,9 +144,7 @@ class MockServer:
                     self.log.info("Command reader at eof; stopping monitor loop.")
                     break
 
-                await self._process_message_command()
-
-                await asyncio.sleep(period_check)
+                await self._process_message_command(timeout)
 
         except ConnectionError:
             self.log.info("Command reader disconnected.")
@@ -187,72 +184,90 @@ class MockServer:
         await asyncio.sleep(0.01)
         await self._write_message_detailed_state(DetailedState.Available)
 
-    async def _process_message_command(self):
-        """Process the incoming message of command."""
+    async def _process_message_command(self, timeout):
+        """Process the incoming message of command.
 
-        msg_input = await self.server_command.reader.read(n=1000)
-        msg = self._decode_and_deserialize_json_message(msg_input)
+        Parameters
+        ----------
+        timeout : `float`
+            Timeout in second.
+        """
 
-        # Acknowledge the command
-        name = msg["id"]
-        sequence_id = msg["sequence_id"]
-        if self._is_command(name):
-            id_ack = CommandStatus.Ack
-            msg_ack = {"id": id_ack.name.lower(), "sequence_id": sequence_id}
-            await self._write_json_packet(self.server_command.writer, msg_ack)
-
-        # Process the command
-        # Parts of command will wait the DM-30851 to finish
-        if name == "cmd_enable":
-            await self._write_message_force_balance_system_status(True)
-
-            # Simulate the real hardware behavior
-            await asyncio.sleep(5)
-
-            self._system_enabled = True
-
-        elif name == "cmd_disable":
-            await self._write_message_force_balance_system_status(False)
-
-            self._system_enabled = False
-
-        elif name == "cmd_exitControl":
-            # Sleep time is to simulate some internal inspection of real system
-            await asyncio.sleep(0.01)
-            await self._write_message_detailed_state(DetailedState.PublishOnly)
-            await asyncio.sleep(0.01)
-            await self._write_message_detailed_state(DetailedState.Available)
-
-        elif name == "cmd_applyForces":
-            pass
-
-        elif name == "cmd_positionMirror":
-            pass
-
-        elif name == "cmd_resetForceOffsets":
-            pass
-
-        elif name == "cmd_clearErrors":
-            pass
-
-        elif name == "cmd_switchForceBalanceSystem":
-            await self._write_message_force_balance_system_status(msg["status"])
-
-        elif name == "cmd_selectInclinationSource":
-            await self._write_message_inclination_telemetry_source(
-                MTM2.InclinationTelemetrySource(msg["source"])
+        try:
+            msg_input = await asyncio.wait_for(
+                self.server_command.reader.readuntil(separator=tcpip.TERMINATOR),
+                timeout,
             )
 
-        elif name == "cmd_setTemperatureOffset":
-            await self._write_message_temperature_offset(
-                msg["ring"], msg["intake"], msg["exhaust"]
-            )
+            msg = self._decode_and_deserialize_json_message(msg_input)
 
-        # Command result
-        if self._is_command(name):
-            id_success = CommandStatus.Success
-            msg_success = {"id": id_success.name.lower(), "sequence_id": sequence_id}
-            await self._write_json_packet(self.server_command.writer, msg_success)
+            # Acknowledge the command
+            name = msg["id"]
+            sequence_id = msg["sequence_id"]
+            if self._is_command(name):
+                id_ack = CommandStatus.Ack
+                msg_ack = {"id": id_ack.name.lower(), "sequence_id": sequence_id}
+                await self._write_json_packet(self.server_command.writer, msg_ack)
+
+            # Process the command
+            # Parts of command will wait the DM-30851 to finish
+            if name == "cmd_enable":
+                await self._write_message_force_balance_system_status(True)
+
+                # Simulate the real hardware behavior
+                await asyncio.sleep(5)
+
+                self._system_enabled = True
+
+            elif name == "cmd_disable":
+                await self._write_message_force_balance_system_status(False)
+
+                self._system_enabled = False
+
+            elif name == "cmd_exitControl":
+                # Sleep time is to simulate some internal inspection of real
+                # system
+                await asyncio.sleep(0.01)
+                await self._write_message_detailed_state(DetailedState.PublishOnly)
+                await asyncio.sleep(0.01)
+                await self._write_message_detailed_state(DetailedState.Available)
+
+            elif name == "cmd_applyForces":
+                pass
+
+            elif name == "cmd_positionMirror":
+                pass
+
+            elif name == "cmd_resetForceOffsets":
+                pass
+
+            elif name == "cmd_clearErrors":
+                pass
+
+            elif name == "cmd_switchForceBalanceSystem":
+                await self._write_message_force_balance_system_status(msg["status"])
+
+            elif name == "cmd_selectInclinationSource":
+                await self._write_message_inclination_telemetry_source(
+                    MTM2.InclinationTelemetrySource(msg["source"])
+                )
+
+            elif name == "cmd_setTemperatureOffset":
+                await self._write_message_temperature_offset(
+                    msg["ring"], msg["intake"], msg["exhaust"]
+                )
+
+            # Command result
+            if self._is_command(name):
+                id_success = CommandStatus.Success
+                msg_success = {
+                    "id": id_success.name.lower(),
+                    "sequence_id": sequence_id,
+                }
+                await self._write_json_packet(self.server_command.writer, msg_success)
+
+        except asyncio.TimeoutError:
+            await asyncio.sleep(0.01)
 
     def _decode_and_deserialize_json_message(self, msg_encode):
         """Decode the incoming JSON message and return a dictionary.
@@ -314,7 +329,7 @@ class MockServer:
                 self._monitor_message_telemetry()
             )
 
-    async def _monitor_message_telemetry(self, period_tel=0.05, period_check=0.001):
+    async def _monitor_message_telemetry(self, period_tel=0.05, timeout=0.01):
         """Monitor the message of incoming telemetry.
 
         Parameters
@@ -322,9 +337,8 @@ class MockServer:
         period_tel : `float`, optional
             Telemetry period in second. The frequency is 20 Hz usually. (the
             default is 0.05)
-        period_check : `float`, optional
-            Period of checking the incoming messages in second. (the default is
-            0.001)
+        timeout : `float`, optional
+            Timeout in second. (the default is 0.01)
         """
 
         try:
@@ -337,7 +351,7 @@ class MockServer:
                     self.log.info("Telemetry reader at eof; stopping monitor loop.")
                     break
 
-                await self._process_message_telemetry(period_check)
+                await self._process_message_telemetry(timeout)
 
         except ConnectionError:
             self.log.info("Telemetry reader disconnected.")
@@ -355,18 +369,19 @@ class MockServer:
         else:
             await self._write_message_power_status(motor_voltage=0.0, motor_current=0.0)
 
-    async def _process_message_telemetry(self, period_check):
+    async def _process_message_telemetry(self, timeout):
         """Read and process data from telemetry server.
 
         Parameters
         ----------
-        period_check : `float`
-            Period of checking the incoming messages in second.
+        timeout : `float`
+            Timeout in second.
         """
 
         try:
             msg = await asyncio.wait_for(
-                self.server_telemetry.reader.read(n=1000), period_check
+                self.server_telemetry.reader.readuntil(separator=tcpip.TERMINATOR),
+                timeout,
             )
             msg_tel = self._decode_and_deserialize_json_message(msg)
 
@@ -377,7 +392,7 @@ class MockServer:
                 pass
 
         except asyncio.TimeoutError:
-            pass
+            await asyncio.sleep(0.01)
 
     def are_servers_connected(self):
         """The command and telemetry sockets are connected or not.
@@ -411,7 +426,7 @@ class MockServer:
         self._welcome_message_sent = False
         self._system_enabled = False
 
-    async def _write_json_packet(self, writer, msg_input, sleep_time=0.001):
+    async def _write_json_packet(self, writer, msg_input):
         """Write the json packet.
 
         Parameters
@@ -420,10 +435,6 @@ class MockServer:
             Writer of the socket.
         msg_input : `dict`
             Input message.
-        sleep_time : `float`, optional
-            Sleep time after writing the message. This value should be >=
-            period_check in TcpClient._monitor_message(). (the default is
-            0.001)
         """
 
         # Transfer to json string and do the encode
@@ -431,8 +442,6 @@ class MockServer:
 
         writer.write(msg)
         await writer.drain()
-
-        await asyncio.sleep(sleep_time)
 
     async def _write_message_m2_assembly_in_position(self, in_position):
         """Write the message: M2 assembly is in position or not.

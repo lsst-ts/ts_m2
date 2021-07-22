@@ -44,8 +44,6 @@ class TcpClient:
     log : `logging.Logger` or None, optional
         A logger. If None, a logger will be instantiated. (the default is
         None)
-    max_n_bytes : `int`, optional
-        Read up to n bytes. (the default is 1000)
     maxsize_queue : `int`, optional
         Maximum size of queue. (the default is 1000)
 
@@ -61,13 +59,11 @@ class TcpClient:
         Reader of socker.
     writer : `asyncio.StreamWriter` or None
         Writer of the socket.
-    max_n_bytes : `int`
-        Read up to n bytes.
     queue : `asyncio.Queue`
         Queue of the message.
     """
 
-    def __init__(self, host, port, log=None, max_n_bytes=1000, maxsize_queue=1000):
+    def __init__(self, host, port, log=None, maxsize_queue=1000):
 
         # Connection information
         self.host = host
@@ -81,8 +77,6 @@ class TcpClient:
 
         self.reader = None
         self.writer = None
-
-        self.max_n_bytes = int(max_n_bytes)
 
         # Unique ID
         self._uniq_id = salobj.index_generator()
@@ -139,22 +133,20 @@ class TcpClient:
             or self.writer.is_closing()
         )
 
-    async def _monitor_msg(self, period_check=0.001):
+    async def _monitor_msg(self, timeout=0.05):
         """Monitor the message.
 
         Parameters
         ----------
-        period_check : `float`, optional
-            Period of checking the incoming messages in second. (the default is
-            0.001)
+        timeout : `float`, optional
+            Timeout in second. (the default is 0.05)
         """
 
         self.log.info("Begin to monitor the incoming message.")
 
         try:
-            while True:
-                await self._put_read_msg_to_queue()
-                await asyncio.sleep(period_check)
+            while self.is_connected():
+                await self._put_read_msg_to_queue(timeout)
 
         except ConnectionError:
             self.log.info("Reader disconnected; closing client")
@@ -162,11 +154,20 @@ class TcpClient:
 
         self.log.info("Stop to monitor the incoming message.")
 
-    async def _put_read_msg_to_queue(self):
-        """Put the read message to self.queue."""
+    async def _put_read_msg_to_queue(self, timeout):
+        """Put the read message to self.queue.
+
+        Parameters
+        ----------
+        timeout : `float`
+            Timeout in second.
+        """
 
         try:
-            data = await self.reader.read(n=self.max_n_bytes)
+            data = await asyncio.wait_for(
+                self.reader.readuntil(separator=tcpip.TERMINATOR),
+                timeout,
+            )
 
             if data is not None:
                 data_decode = data.decode()
@@ -174,6 +175,9 @@ class TcpClient:
                 self.queue.put_nowait(msg)
 
                 self._check_queue_size()
+
+        except asyncio.TimeoutError:
+            await asyncio.sleep(0.01)
 
         except json.JSONDecodeError:
             self.log.debug(f"Can not decode the message: {data_decode}.")
