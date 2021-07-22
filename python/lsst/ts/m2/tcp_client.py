@@ -27,7 +27,7 @@ import copy
 from lsst.ts import salobj
 from lsst.ts import tcpip
 
-from . import MsgType
+from . import MsgType, write_json_packet
 
 __all__ = ["TcpClient"]
 
@@ -251,11 +251,7 @@ class TcpClient:
         else:
             raise ValueError(f"The message type: {msg_type} is not supported.")
 
-        # Transfer to json string and do the encode
-        msg = json.dumps(msg_details_with_header, indent=4).encode() + tcpip.TERMINATOR
-
-        self.writer.write(msg)
-        await self.writer.drain()
+        await write_json_packet(self.writer, msg_details_with_header)
 
     def _add_cmd_header(self, msg_name, msg_details):
         """Add the command header.

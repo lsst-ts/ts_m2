@@ -28,8 +28,7 @@ import logging
 import json
 
 from lsst.ts import tcpip
-
-from lsst.ts.m2 import MsgType, TcpClient
+from lsst.ts.m2 import MsgType, TcpClient, write_json_packet
 
 
 # Read timeout in second
@@ -228,7 +227,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         async with self.make_server() as server, self.make_client(server) as client:
 
             input_msg = {"val": 1}
-            await self._write_msg_in_server(server, input_msg)
+            await write_json_packet(server.writer, input_msg)
 
             # Sleep a short time to let the monitor loop have a chance to run
             await asyncio.sleep(0.01)
@@ -237,22 +236,6 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
             data = client.queue.get_nowait()
             self.assertEqual(data["val"], input_msg["val"])
-
-    async def _write_msg_in_server(self, server, input_msg):
-        """Write the message in server.
-
-        Parameters
-        ----------
-        server : `lsst.ts.tcpip.OneClientServer`
-            TCP/IP server.
-        input_msg : `dict`
-            Input message.
-        """
-
-        msg = json.dumps(input_msg, indent=4).encode() + tcpip.TERMINATOR
-
-        server.writer.write(msg)
-        await server.writer.drain()
 
     async def test_run_monitor_loop(self):
         async with self.make_server() as server, self.make_client(server) as client:
@@ -290,7 +273,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         count_total = int(duration * frequency)
         sleep_time = 1 / frequency
         for count in range(count_total):
-            await self._write_msg_in_server(server, input_msg)
+            await write_json_packet(server.writer, input_msg)
             await asyncio.sleep(sleep_time)
 
 

@@ -29,7 +29,7 @@ from lsst.ts import salobj
 from lsst.ts import tcpip
 from lsst.ts.idl.enums import MTM2
 
-from . import CommandStatus, DetailedState
+from . import CommandStatus, DetailedState, write_json_packet
 
 
 __all__ = ["MockServer"]
@@ -207,7 +207,7 @@ class MockServer:
             if self._is_command(name):
                 id_ack = CommandStatus.Ack
                 msg_ack = {"id": id_ack.name.lower(), "sequence_id": sequence_id}
-                await self._write_json_packet(self.server_command.writer, msg_ack)
+                await write_json_packet(self.server_command.writer, msg_ack)
 
             # Process the command
             # Parts of command will wait the DM-30851 to finish
@@ -264,7 +264,7 @@ class MockServer:
                     "id": id_success.name.lower(),
                     "sequence_id": sequence_id,
                 }
-                await self._write_json_packet(self.server_command.writer, msg_success)
+                await write_json_packet(self.server_command.writer, msg_success)
 
         except asyncio.TimeoutError:
             await asyncio.sleep(0.01)
@@ -426,23 +426,6 @@ class MockServer:
         self._welcome_message_sent = False
         self._system_enabled = False
 
-    async def _write_json_packet(self, writer, msg_input):
-        """Write the json packet.
-
-        Parameters
-        ----------
-        writer : `asyncio.StreamWriter`
-            Writer of the socket.
-        msg_input : `dict`
-            Input message.
-        """
-
-        # Transfer to json string and do the encode
-        msg = json.dumps(msg_input, indent=4).encode() + tcpip.TERMINATOR
-
-        writer.write(msg)
-        await writer.drain()
-
     async def _write_message_m2_assembly_in_position(self, in_position):
         """Write the message: M2 assembly is in position or not.
 
@@ -453,7 +436,7 @@ class MockServer:
         """
 
         msg = {"id": "m2AssemblyInPosition", "inPosition": in_position}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_cell_temperature_high_warning(self, hi_warning):
         """Write the message: cell temperature is high or not.
@@ -465,7 +448,7 @@ class MockServer:
         """
 
         msg = {"id": "cellTemperatureHiWarning", "hiWarning": hi_warning}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_detailed_state(self, detailed_state):
         """Write the message: detailed state.
@@ -477,7 +460,7 @@ class MockServer:
         """
 
         msg = {"id": "detailedState", "detailedState": int(detailed_state)}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_commandable_by_dds(self, state):
         """Write the message: commandable by DDS or not.
@@ -489,7 +472,7 @@ class MockServer:
         """
 
         msg = {"id": "commandableByDDS", "state": state}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_interlock(self, state):
         """Write the message: interlock.
@@ -501,7 +484,7 @@ class MockServer:
         """
 
         msg = {"id": "interlock", "state": state}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_tcp_ip_connected(self, is_connected):
         """Write the message: TCP/IP connection is on or not.
@@ -513,7 +496,7 @@ class MockServer:
         """
 
         msg = {"id": "tcpIpConnected", "isConnected": is_connected}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_hardpoint_list(self, actuators):
         """Write the message: hardpoint list.
@@ -525,7 +508,7 @@ class MockServer:
         """
 
         msg = {"id": "hardpointList", "actuators": actuators}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_force_balance_system_status(self, status):
         """Write the message: force balance system is on or not.
@@ -537,7 +520,7 @@ class MockServer:
         """
 
         msg = {"id": "forceBalanceSystemStatus", "status": status}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_inclination_telemetry_source(self, source):
         """Write the message: inclination telemetry source.
@@ -549,7 +532,7 @@ class MockServer:
         """
 
         msg = {"id": "inclinationTelemetrySource", "source": int(source)}
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_temperature_offset(self, ring, intake, exhaust):
         """Write the message: temperature offset in degree C.
@@ -570,7 +553,7 @@ class MockServer:
             "intake": intake,
             "exhaust": exhaust,
         }
-        await self._write_json_packet(self.server_command.writer, msg)
+        await write_json_packet(self.server_command.writer, msg)
 
     async def _write_message_position(self, x, y, z, x_rot, y_rot, z_rot):
         """Write the message: M2 position by the actuator positions.
@@ -600,7 +583,7 @@ class MockServer:
             "yRot": y_rot,
             "zRot": z_rot,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_position_ims(self, x, y, z, x_rot, y_rot, z_rot):
         """Write the message: M2 position by the independent measurement system
@@ -631,7 +614,7 @@ class MockServer:
             "yRot": y_rot,
             "zRot": z_rot,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_axial_force(
         self, lut_gravity, lut_temperature, applied, measured, hardpoint_correction
@@ -660,7 +643,7 @@ class MockServer:
             "measured": measured,
             "hardpointCorrection": hardpoint_correction,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_tangent_force(
         self, lut_gravity, lut_temperature, applied, measured, hardpoint_correction
@@ -689,7 +672,7 @@ class MockServer:
             "measured": measured,
             "hardpointCorrection": hardpoint_correction,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_temperature(self, ring, intake, exhaust):
         """Write the message: cell temperature in degree C.
@@ -710,7 +693,7 @@ class MockServer:
             "intake": intake,
             "exhaust": exhaust,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_zenith_angle(
         self, measured, inclinometer_raw, inclinometer_processed
@@ -733,7 +716,7 @@ class MockServer:
             "inclinometerRaw": inclinometer_raw,
             "inclinometerProcessed": inclinometer_processed,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_axial_actuator_steps(self, steps):
         """Write the message: axial actuator steps.
@@ -748,7 +731,7 @@ class MockServer:
             "id": "axialActuatorSteps",
             "steps": steps,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_tangent_actuator_steps(self, steps):
         """Write the message: tangent actuator steps.
@@ -763,7 +746,7 @@ class MockServer:
             "id": "tangentActuatorSteps",
             "steps": steps,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_axial_encoder_positions(self, position):
         """Write the message: axial actuator encoder positions in micron.
@@ -778,7 +761,7 @@ class MockServer:
             "id": "axialEncoderPositions",
             "position": position,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_tangent_encoder_positions(self, position):
         """Write the message: tangent actuator encoder positions in micron.
@@ -793,7 +776,7 @@ class MockServer:
             "id": "tangentEncoderPositions",
             "position": position,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_ilc_data(self, status):
         """Write the message: inner-loop controller (ILC) data.
@@ -808,7 +791,7 @@ class MockServer:
             "id": "ilcData",
             "status": status,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_displacement_sensors(self, theta_z, delta_z):
         """Write the message: raw measurements from displacement sensors.
@@ -826,7 +809,7 @@ class MockServer:
             "thetaZ": theta_z,
             "deltaZ": delta_z,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_force_balance(self, fx, fy, fz, mx, my, mz):
         """Write the message: net forces and moments as commanded by the force
@@ -857,7 +840,7 @@ class MockServer:
             "my": my,
             "mz": mz,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_net_forces_total(self, fx, fy, fz):
         """Write the message: total actuator net forces in Newton.
@@ -878,7 +861,7 @@ class MockServer:
             "fy": fy,
             "fz": fz,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_net_moments_total(self, mx, my, mz):
         """Write the message: total actuator net moments of force in
@@ -900,7 +883,7 @@ class MockServer:
             "my": my,
             "mz": mz,
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
 
     async def _write_message_power_status(
         self,
@@ -935,4 +918,4 @@ class MockServer:
             "commVoltage": comm_voltage + rms_power[2],
             "commCurrent": comm_current + rms_power[3],
         }
-        await self._write_json_packet(self.server_telemetry.writer, msg)
+        await write_json_packet(self.server_telemetry.writer, msg)
