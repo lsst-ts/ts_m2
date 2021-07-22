@@ -194,70 +194,67 @@ class MockServer:
 
             msg = self._decode_and_deserialize_json_message(msg_input)
 
-            # Acknowledge the command
-            name = msg["id"]
-            sequence_id = msg["sequence_id"]
-            if self._is_command(name):
-                id_ack = CommandStatus.Ack
-                msg_ack = {"id": id_ack.name.lower(), "sequence_id": sequence_id}
-                await write_json_packet(self.server_command.writer, msg_ack)
-
             # Process the command
-            # Parts of command will wait the DM-30851 to finish
-            if name == "cmd_enable":
-                await self._write_message_force_balance_system_status(True)
-
-                # Simulate the real hardware behavior
-                await asyncio.sleep(5)
-
-                self._system_enabled = True
-
-            elif name == "cmd_disable":
-                await self._write_message_force_balance_system_status(False)
-
-                self._system_enabled = False
-
-            elif name == "cmd_exitControl":
-                # Sleep time is to simulate some internal inspection of real
-                # system
-                await asyncio.sleep(0.01)
-                await self._write_message_detailed_state(DetailedState.PublishOnly)
-                await asyncio.sleep(0.01)
-                await self._write_message_detailed_state(DetailedState.Available)
-
-            elif name == "cmd_applyForces":
-                pass
-
-            elif name == "cmd_positionMirror":
-                pass
-
-            elif name == "cmd_resetForceOffsets":
-                pass
-
-            elif name == "cmd_clearErrors":
-                pass
-
-            elif name == "cmd_switchForceBalanceSystem":
-                await self._write_message_force_balance_system_status(msg["status"])
-
-            elif name == "cmd_selectInclinationSource":
-                await self._write_message_inclination_telemetry_source(
-                    MTM2.InclinationTelemetrySource(msg["source"])
-                )
-
-            elif name == "cmd_setTemperatureOffset":
-                await self._write_message_temperature_offset(
-                    msg["ring"], msg["intake"], msg["exhaust"]
-                )
-
-            # Command result
+            name = msg["id"]
             if self._is_command(name):
-                id_success = CommandStatus.Success
-                msg_success = {
-                    "id": id_success.name.lower(),
-                    "sequence_id": sequence_id,
-                }
-                await write_json_packet(self.server_command.writer, msg_success)
+
+                sequence_id = msg["sequence_id"]
+
+                # Acknowledge the command
+                await self._acknowledge_command(sequence_id)
+
+                # Parts of command will wait the DM-30851 to finish
+                if name == "cmd_enable":
+                    await self._write_message_force_balance_system_status(True)
+
+                    # Simulate the real hardware behavior
+                    await asyncio.sleep(5)
+
+                    self._system_enabled = True
+
+                elif name == "cmd_disable":
+                    await self._write_message_force_balance_system_status(False)
+
+                    self._system_enabled = False
+
+                elif name == "cmd_exitControl":
+                    # Sleep time is to simulate some internal inspection of
+                    # real system
+                    await asyncio.sleep(0.01)
+                    await self._write_message_detailed_state(DetailedState.PublishOnly)
+                    await asyncio.sleep(0.01)
+                    await self._write_message_detailed_state(DetailedState.Available)
+
+                elif name == "cmd_applyForces":
+                    pass
+
+                elif name == "cmd_positionMirror":
+                    pass
+
+                elif name == "cmd_resetForceOffsets":
+                    pass
+
+                elif name == "cmd_clearErrors":
+                    pass
+
+                elif name == "cmd_switchForceBalanceSystem":
+                    await self._write_message_force_balance_system_status(msg["status"])
+
+                elif name == "cmd_selectInclinationSource":
+                    await self._write_message_inclination_telemetry_source(
+                        MTM2.InclinationTelemetrySource(msg["source"])
+                    )
+
+                elif name == "cmd_setTemperatureOffset":
+                    await self._write_message_temperature_offset(
+                        msg["ring"], msg["intake"], msg["exhaust"]
+                    )
+
+                # Command result (only reply the success at this moment)
+                await self._reply_command(sequence_id)
+
+            # TODO (DM-30851):
+            # Handle the event at DM-30851
 
         except asyncio.TimeoutError:
             await asyncio.sleep(self.TIMEOUT_IN_SECOND)
@@ -299,6 +296,37 @@ class MockServer:
         """
 
         return message_name.startswith("cmd_")
+
+    async def _acknowledge_command(self, sequence_id):
+        """Acknowledge the command with the sequence ID.
+
+        Parameters
+        ----------
+        sequence_id : `int`
+            Sequence ID that should be >= 0.
+        """
+
+        id_ack = CommandStatus.Ack
+        msg_ack = {"id": id_ack.name.lower(), "sequence_id": sequence_id}
+        await write_json_packet(self.server_command.writer, msg_ack)
+
+    async def _reply_command(self, sequence_id):
+        """Reply the command with the sequence ID.
+
+        Assume always success at this moment.
+
+        Parameters
+        ----------
+        sequence_id : `int`
+            Sequence ID that should be >= 0.
+        """
+
+        id_success = CommandStatus.Success
+        msg_success = {
+            "id": id_success.name.lower(),
+            "sequence_id": sequence_id,
+        }
+        await write_json_packet(self.server_command.writer, msg_success)
 
     def _connect_state_changed_callback_telemetry(self, server_telemetry):
         """Called when the telemetry server connection state changes.
