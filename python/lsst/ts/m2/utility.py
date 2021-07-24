@@ -1,6 +1,6 @@
 # This file is part of ts_m2.
 #
-# Developed for the LSST Data Management System.
+# Developed for the Vera Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -19,19 +19,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# Set __version__ before importing the CSC
-try:
-    from .version import *
-except ImportError:
-    __version__ = "?"
+import json
 
-from .config_schema import *
-from .enum import *
-from .utility import *
-from .tcp_client import *
-from .model import *
-from .csc import *
-from .mock_message_telemetry import *
-from .mock_message_event import *
-from .mock_command import *
-from .mock_server import *
+from lsst.ts import tcpip
+
+__all__ = ["write_json_packet"]
+
+
+async def write_json_packet(writer, msg_input):
+    """Write the json packet.
+
+    Parameters
+    ----------
+    writer : `asyncio.StreamWriter`
+        Writer of the socket.
+    msg_input : `dict`
+        Input message.
+    """
+
+    # Transfer to json string and do the encode
+    msg = json.dumps(msg_input, indent=4).encode() + tcpip.TERMINATOR
+
+    writer.write(msg)
+    await writer.drain()

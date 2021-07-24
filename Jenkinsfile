@@ -26,7 +26,7 @@ pipeline {
             steps {
                 script {
                     sh """
-                    docker pull lsstts/salobj:\${image_tag}
+                    docker pull lsstts/develop-env:\${image_tag}
                     """
                 }
             }
@@ -36,7 +36,7 @@ pipeline {
                 script {
                     sh """
                     chmod -R a+rw \${WORKSPACE} || echo "Failed to set workspace mode"
-                    container=\$(docker run -v \${WORKSPACE}:/home/saluser/repo/ -td --rm --name \${container_name} -e LTD_USERNAME=\${user_ci_USR} -e LTD_PASSWORD=\${user_ci_PSW} lsstts/salobj:\${image_tag})
+                    container=\$(docker run -v \${WORKSPACE}:/home/saluser/repo/ -td --rm --name \${container_name} -e LTD_USERNAME=\${user_ci_USR} -e LTD_PASSWORD=\${user_ci_PSW} lsstts/develop-env:\${image_tag})
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_config_mttcs && /home/saluser/.checkout_repo.sh \${work_branches}\"
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_xml && /home/saluser/.checkout_repo.sh \${work_branches}\"
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_idl && /home/saluser/.checkout_repo.sh \${work_branches}\"

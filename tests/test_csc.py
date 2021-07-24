@@ -1,3 +1,24 @@
+# This file is part of ts_m2.
+#
+# Developed for the Vera Rubin Observatory Telescope and Site Systems.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 import asyncio
 import pathlib
 import unittest
@@ -159,13 +180,13 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
             )
 
             # Check sending axial forces out of limit
-            set_axial_force = np.zeros(self.csc.n_actuators)
+            set_axial_force = np.zeros(self.csc.model.n_actuators)
             random_actuators = np.random.randint(
                 0,
-                self.csc.n_actuators,
-                size=np.random.randint(1, self.csc.n_actuators),
+                self.csc.model.n_actuators,
+                size=np.random.randint(1, self.csc.model.n_actuators),
             )
-            set_axial_force[random_actuators] = self.csc.max_axial_force + 1.0
+            set_axial_force[random_actuators] = self.csc.model.max_axial_force + 1.0
 
             with self.assertRaises(
                 salobj.base.AckError,
@@ -176,13 +197,13 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
                 )
 
             # Check sending tangent forces out of limit
-            set_tangent_force = np.zeros(self.csc.n_tangent_actuators)
+            set_tangent_force = np.zeros(self.csc.model.n_tangent_actuators)
             random_actuators = np.random.randint(
                 0,
-                self.csc.n_tangent_actuators,
-                size=np.random.randint(1, self.csc.n_tangent_actuators),
+                self.csc.model.n_tangent_actuators,
+                size=np.random.randint(1, self.csc.model.n_tangent_actuators),
             )
-            set_tangent_force[random_actuators] = self.csc.max_tangent_force + 1.0
+            set_tangent_force[random_actuators] = self.csc.model.max_tangent_force + 1.0
 
             with self.assertRaises(
                 salobj.base.AckError,
@@ -311,10 +332,11 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
 
                 zenith_angle_values[i] = zenith_angle.measured
 
+            inclinometer_rms = 0.05
             self.assertAlmostEqual(
                 np.mean(zenith_angle_values),
                 90.0 - elevation,
-                int(np.ceil(-np.log10(self.csc.inclinometer_rms))) - 1,
+                int(np.ceil(-np.log10(inclinometer_rms))) - 1,
             )
 
             self.remote.evt_inclinationTelemetrySource.flush()
@@ -385,7 +407,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
             )
             measured = np.array(axial_forces.measured)
             std_dev = np.std(measured - expected)
-            self.assertTrue(std_dev < self.csc.force_rms * 2.0)
+            force_rms = 0.5
+            self.assertTrue(std_dev < force_rms * 2.0)
 
             # Check tangent forces
             tangent_forces = await self.remote.tel_tangentForce.next(
@@ -393,8 +416,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
             )
 
             force = (
-                self.csc.mirror_weight
-                * np.sin(np.radians(self.csc.zenith_angle))
+                self.csc.model.mirror_weight
+                * np.sin(np.radians(self.csc.model.zenith_angle))
                 / 4.0
                 / np.cos(np.radians(30.0))
             )
