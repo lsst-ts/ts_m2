@@ -19,24 +19,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from enum import auto, IntEnum
+import json
 
-__all__ = ["MsgType", "CommandStatus", "DetailedState"]
+from lsst.ts import tcpip
 
-
-class MsgType(IntEnum):
-    Command = 1
-    Event = auto()
-    Telemetry = auto()
+__all__ = ["write_json_packet"]
 
 
-class CommandStatus(IntEnum):
-    Success = 1
-    Fail = auto()
-    Ack = auto()
-    NoAck = auto()
+async def write_json_packet(writer, msg_input):
+    """Write the json packet.
 
+    Parameters
+    ----------
+    writer : `asyncio.StreamWriter`
+        Writer of the socket.
+    msg_input : `dict`
+        Input message.
+    """
 
-class DetailedState(IntEnum):
-    PublishOnly = 1
-    Available = auto()
+    # Transfer to json string and do the encode
+    msg = json.dumps(msg_input, indent=4).encode() + tcpip.TERMINATOR
+
+    writer.write(msg)
+    await writer.drain()

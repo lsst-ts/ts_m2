@@ -1,4 +1,8 @@
 @startuml
 class TcpClient
+MockServer *-- MockMessageTelemetry
+MockServer *-- MockMessageEvent
+MockServer *-- MockCommand
+MockCommand ..> MockMessageEvent
 M2 *-- Model
 @enduml
