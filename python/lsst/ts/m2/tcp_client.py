@@ -148,6 +148,9 @@ class TcpClient:
             self.log.info("Reader disconnected; closing client")
             await self._basic_close()
 
+        except asyncio.IncompleteReadError:
+            self.log.info("EOF is reached.")
+
         self.log.info("Stop to monitor the incoming message.")
 
     async def _put_read_msg_to_queue(self):
@@ -171,6 +174,9 @@ class TcpClient:
 
         except json.JSONDecodeError:
             self.log.debug(f"Can not decode the message: {data_decode}.")
+
+        except asyncio.IncompleteReadError:
+            raise
 
     def _check_queue_size(self):
         """Check the size of queue and log the information if needed."""
