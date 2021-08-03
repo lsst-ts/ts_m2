@@ -149,7 +149,7 @@ class TcpClient:
             await self._basic_close()
 
         except asyncio.IncompleteReadError:
-            self.log.info("EOF is reached.")
+            self.log.exception("EOF is reached.")
 
         self.log.info("Stop to monitor the incoming message.")
 

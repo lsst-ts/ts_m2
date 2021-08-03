@@ -394,7 +394,7 @@ class MockServer:
             self._monitor_loop_task_telemetry.cancel()
 
         except asyncio.IncompleteReadError:
-            self.log.info("EOF is reached.")
+            self.log.exception("EOF is reached.")
 
         await self.server_telemetry.close_client()
 

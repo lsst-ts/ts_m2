@@ -65,7 +65,10 @@ class MockCommand:
         # Simulate the real hardware behavior
         await asyncio.sleep(5)
 
-        return model, CommandStatus.Success if command_success else CommandStatus.Fail
+        return (
+            model,
+            CommandStatus.Success if command_success is True else CommandStatus.Fail,
+        )
 
     async def disable(self, message, model, message_event):
         """Disable the system.
@@ -253,7 +256,10 @@ class MockCommand:
 
         await message_event.write_m2_assembly_in_position(command_success)
 
-        return model, CommandStatus.Success if command_success else CommandStatus.Fail
+        return (
+            model,
+            CommandStatus.Success if command_success is True else CommandStatus.Fail,
+        )
 
     async def reset_force_offsets(self, message, model, message_event):
         """Reset the actuator force offsets (not LUT force).
@@ -331,7 +337,10 @@ class MockCommand:
             model.force_balance_system_status
         )
 
-        return model, CommandStatus.Success if command_success else CommandStatus.Fail
+        return (
+            model,
+            CommandStatus.Success if command_success is True else CommandStatus.Fail,
+        )
 
     async def select_inclination_source(self, message, model, message_event):
         """Select the source of inclination.

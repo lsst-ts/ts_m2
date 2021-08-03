@@ -33,7 +33,7 @@ from lsst.ts.idl.enums import MTM2
 __all__ = ["MockModel"]
 
 
-class MockModel(object):
+class MockModel:
     def __init__(self, log=None, telemetry_interval=0.05):
         """Initialize the Mock Model class.
 
