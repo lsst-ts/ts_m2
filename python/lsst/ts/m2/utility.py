@@ -38,7 +38,7 @@ async def write_json_packet(writer, msg_input):
     """
 
     # Transfer to json string and do the encode
-    msg = json.dumps(msg_input, indent=4).encode() + tcpip.TERMINATOR
+    msg = json.dumps(msg_input).encode() + tcpip.TERMINATOR
 
     writer.write(msg)
     await writer.drain()

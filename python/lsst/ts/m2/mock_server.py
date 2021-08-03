@@ -26,9 +26,9 @@ import asyncio
 
 from lsst.ts import salobj
 from lsst.ts import tcpip
-from lsst.ts.idl.enums import MTM2
 
 from . import (
+    MockModel,
     CommandStatus,
     DetailedState,
     write_json_packet,
@@ -46,6 +46,10 @@ class MockServer:
 
     Parameters
     ----------
+    config_dir : `pathlib.PosixPath`
+        Configuration directory.
+    lut_path : `str`
+        Look-up table (LUT) path.
     host : `str`
         IP address for this server; typically `LOCALHOST` for IP4
         or "::" for IP6.
@@ -66,6 +70,8 @@ class MockServer:
     ----------
     log : `logging.Logger`
         A logger.
+    model : `MockModel`
+        Mock model to simulate the M2 hardware behavior.
     server_command : `tcpip.OneClientServer`
         Command server.
     server_telemetry : `tcpip.OneClientServer`
@@ -79,6 +85,8 @@ class MockServer:
 
     def __init__(
         self,
+        config_dir,
+        lut_path,
         host,
         port_command=50000,
         port_telemetry=50001,
@@ -90,6 +98,12 @@ class MockServer:
             self.log = logging.getLogger(type(self).__name__)
         else:
             self.log = log.getChild(type(self).__name__)
+
+        # Instantiate the MockModel class and do the configuration
+        self.model = MockModel(
+            log=self.log, telemetry_interval=self.PERIOD_TELEMETRY_IN_SECOND
+        )
+        self.model.configure(config_dir, lut_path)
 
         self.server_command = tcpip.OneClientServer(
             "Commands",
@@ -124,6 +138,9 @@ class MockServer:
         self._command_response = {
             "cmd_enable": self._command.enable,
             "cmd_disable": self._command.disable,
+            "cmd_standby": self._command.standby,
+            "cmd_start": self._command.start,
+            "cmd_enterControl": self._command.enter_control,
             "cmd_exitControl": self._command.exit_control,
             "cmd_applyForces": self._command.apply_forces,
             "cmd_positionMirror": self._command.position_mirror,
@@ -161,6 +178,14 @@ class MockServer:
                     await self._send_welcome_message()
                     self._welcome_message_sent = True
 
+                if self.model.is_cell_temperature_high():
+                    await self._message_event.write_cell_temperature_high_warning(True)
+
+                if self.model.in_position:
+                    await self._message_event.write_m2_assembly_in_position(True)
+
+                await asyncio.sleep(self.PERIOD_TELEMETRY_IN_SECOND)
+
                 if self.server_command.reader.at_eof():
                     self.log.info("Command reader at eof; stopping monitor loop.")
                     break
@@ -171,6 +196,9 @@ class MockServer:
             self.log.info("Command reader disconnected.")
             self._monitor_loop_task_command.cancel()
 
+        except asyncio.IncompleteReadError:
+            self.log.info("EOF is reached.")
+
         await self.server_command.close_client()
 
     async def _send_welcome_message(self):
@@ -180,19 +208,15 @@ class MockServer:
         Most of messages are just the events.
         """
 
-        # TODO (DM-30851):
-        # Part of telemetry implementation will be updated in DM-30851
-        # to finish. For example, the temp_offset and inclination source
-
         await self._message_event.write_tcp_ip_connected(True)
         await self._message_event.write_commandable_by_dds(True)
         await self._message_event.write_hardpoint_list([6, 16, 26, 74, 76, 78])
         await self._message_event.write_interlock(False)
         await self._message_event.write_inclination_telemetry_source(
-            MTM2.InclinationTelemetrySource.ONBOARD
+            self.model.inclination_source
         )
 
-        temp_offset = 21.0
+        temp_offset = self.model.temperature["ref"]
         await self._message_event.write_temperature_offset(
             [temp_offset] * 12,
             [temp_offset] * 2,
@@ -222,18 +246,20 @@ class MockServer:
 
                 # Acknowledge the command
                 sequence_id = msg["sequence_id"]
-                await self._acknowledge_command(sequence_id)
+                command_name = msg["id"]
+                if command_name in self._command_response.keys():
+                    await self._acknowledge_command(sequence_id)
 
-                await self._process_command(msg)
+                command_status = await self._process_command(msg)
 
-                # Command result (only reply the success at this moment)
-                await self._reply_command(sequence_id)
-
-            # TODO (DM-30851):
-            # Handle the event at DM-30851
+                # Command result
+                await self._reply_command(sequence_id, command_status)
 
         except asyncio.TimeoutError:
             await asyncio.sleep(self.TIMEOUT_IN_SECOND)
+
+        except asyncio.IncompleteReadError:
+            raise
 
     def _decode_and_deserialize_json_message(self, msg_encode):
         """Decode the incoming JSON message and return a dictionary.
@@ -293,34 +319,43 @@ class MockServer:
         ----------
         message : `dict`
             Command message.
+
+        Returns
+        -------
+        `CommandStatus`
+            Status of command execution.
         """
 
         command_name = message["id"]
-        if command_name in self._command_response:
-            await self._command_response[command_name](message, self._message_event)
-        else:
-            commands = list(self._command_response.keys())
-            self.log.debug(
-                f"Unrecognized command: {command_name}. Must be one of {commands}."
+        available_commands = list(self._command_response.keys())
+        if command_name in available_commands:
+            self.model, command_status = await self._command_response[command_name](
+                message, self.model, self._message_event
             )
+            return command_status
 
-    async def _reply_command(self, sequence_id):
+        else:
+            self.log.debug(
+                f"Unrecognized command: {command_name}. Must be one of {available_commands}."
+            )
+            return CommandStatus.NoAck
+
+    async def _reply_command(self, sequence_id, command_status):
         """Reply the command with the sequence ID.
-
-        Assume always success at this moment.
 
         Parameters
         ----------
         sequence_id : `int`
             Sequence ID that should be >= 0.
+        command_status : `CommandStatus`
+            Status of command execution.
         """
 
-        id_success = CommandStatus.Success
-        msg_success = {
-            "id": id_success.name.lower(),
+        msg_command_status = {
+            "id": command_status.name.lower(),
             "sequence_id": sequence_id,
         }
-        await write_json_packet(self.server_command.writer, msg_success)
+        await write_json_packet(self.server_command.writer, msg_command_status)
 
     def _connect_state_changed_callback_telemetry(self, server_telemetry):
         """Called when the telemetry server connection state changes.
@@ -358,18 +393,59 @@ class MockServer:
             self.log.info("Telemetry reader disconnected.")
             self._monitor_loop_task_telemetry.cancel()
 
+        except asyncio.IncompleteReadError:
+            self.log.exception("EOF is reached.")
+
         await self.server_telemetry.close_client()
 
     async def _write_message_telemetry(self):
         """Write the telemetry message."""
 
-        # TODO(DM-30851):
-        # Most of telemetry will be implemented in the DM-30851
-        if self._command.system_enabled:
-            await self._message_telemetry.write_power_status()
-        else:
-            await self._message_telemetry.write_power_status(
-                motor_voltage=0.0, motor_current=0.0
+        telemetry_data = self.model.get_telemetry_data()
+
+        await self._message_telemetry.write_power_status(telemetry_data["powerStatus"])
+        await self._message_telemetry.write_displacement_sensors(
+            telemetry_data["displacementSensors"]
+        )
+
+        if self.model.actuator_power_on:
+            await self._message_telemetry.write_ilc_data(telemetry_data["ilcData"])
+            await self._message_telemetry.write_net_forces_total(
+                telemetry_data["netForcesTotal"]
+            )
+            await self._message_telemetry.write_net_moments_total(
+                telemetry_data["netMomentsTotal"]
+            )
+            await self._message_telemetry.write_axial_force(
+                telemetry_data["axialForce"]
+            )
+            await self._message_telemetry.write_tangent_force(
+                telemetry_data["tangentForce"]
+            )
+            await self._message_telemetry.write_force_balance(
+                telemetry_data["forceBalance"]
+            )
+            await self._message_telemetry.write_position(telemetry_data["position"])
+            await self._message_telemetry.write_position_ims(
+                telemetry_data["positionIMS"]
+            )
+            await self._message_telemetry.write_temperature(
+                telemetry_data["temperature"]
+            )
+            await self._message_telemetry.write_zenith_angle(
+                telemetry_data["zenithAngle"]
+            )
+            await self._message_telemetry.write_axial_encoder_positions(
+                telemetry_data["axialEncoderPositions"]
+            )
+            await self._message_telemetry.write_tangent_encoder_positions(
+                telemetry_data["tangentEncoderPositions"]
+            )
+            await self._message_telemetry.write_axial_actuator_steps(
+                telemetry_data["axialActuatorSteps"]
+            )
+            await self._message_telemetry.write_tangent_actuator_steps(
+                telemetry_data["tangentActuatorSteps"]
             )
 
     async def _process_message_telemetry(self):
@@ -382,14 +458,18 @@ class MockServer:
             )
             msg_tel = self._decode_and_deserialize_json_message(msg)
 
-            # TODO (DM-30851):
-            # Most of telemetry will be implemented in the DM-30851
-            name = msg_tel["id"]
-            if name == "tel_elevation":
-                pass
+            # In the real M2 LabVIEW code, we will compare the string with the
+            # lower case
+            name = msg_tel["id"].lower()
+            component = msg_tel["compName"].lower()
+            if name == "tel_elevation" and component == "mtmount":
+                self.model.zenith_angle = 90.0 - msg_tel["actualPosition"]
 
         except asyncio.TimeoutError:
             await asyncio.sleep(self.TIMEOUT_IN_SECOND)
+
+        except asyncio.IncompleteReadError:
+            raise
 
     def are_servers_connected(self):
         """The command and telemetry sockets are connected or not.
@@ -425,4 +505,6 @@ class MockServer:
         self._message_event = None
         self._message_telemetry = None
 
-        self._command.system_enabled = False
+        self.model.force_balance_system_status = False
+        self.model.actuator_power_on = False
+        self.model.error_cleared = True

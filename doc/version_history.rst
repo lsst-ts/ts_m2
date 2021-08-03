@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.3.6
+------
+
+* Add the **MockModel** class.
+* Integrate the **MockServer** with **MockModel**.
+
 v0.3.5
 ------
 
