@@ -19,8 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import numpy as np
-
 from . import write_json_packet
 
 __all__ = ["MockMessageTelemetry"]
@@ -44,367 +42,280 @@ class MockMessageTelemetry:
 
         self.writer = writer
 
-    async def write_position(self, x, y, z, x_rot, y_rot, z_rot):
+    async def write_position(self, data):
         """Write the message: M2 position by the actuator positions.
 
         Parameters
         ----------
-        x : `float`
-            Position x in micron.
-        y : `float`
-            Position y in micron.
-        z : `float`
-            Position z in micron.
-        x_rot : `float`
-            Rotation about x in arcsec.
-        y_rot : `float`
-            Rotation about y in arcsec.
-        z_rot : `float`
-            Rotation about z in arcsec.
+        data : `dict`
+            Data of M2 position.
         """
 
         msg = {
             "id": "position",
-            "x": x,
-            "y": y,
-            "z": z,
-            "xRot": x_rot,
-            "yRot": y_rot,
-            "zRot": z_rot,
+            "x": data["x"],
+            "y": data["y"],
+            "z": data["z"],
+            "xRot": data["xRot"],
+            "yRot": data["yRot"],
+            "zRot": data["zRot"],
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_position_ims(self, x, y, z, x_rot, y_rot, z_rot):
+    async def write_position_ims(self, data):
         """Write the message: M2 position by the independent measurement system
         (IMS).
 
         Parameters
         ----------
-        x : `float`
-            Position x in micron.
-        y : `float`
-            Position y in micron.
-        z : `float`
-            Position z in micron.
-        x_rot : `float`
-            Rotation about x in arcsec.
-        y_rot : `float`
-            Rotation about y in arcsec.
-        z_rot : `float`
-            Rotation about z in arcsec.
+        data : `dict`
+            Data of M2 position by IMS.
         """
 
         msg = {
             "id": "positionIMS",
-            "x": x,
-            "y": y,
-            "z": z,
-            "xRot": x_rot,
-            "yRot": y_rot,
-            "zRot": z_rot,
+            "x": data["x"],
+            "y": data["y"],
+            "z": data["z"],
+            "xRot": data["xRot"],
+            "yRot": data["yRot"],
+            "zRot": data["zRot"],
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_axial_force(
-        self, lut_gravity, lut_temperature, applied, measured, hardpoint_correction
-    ):
+    async def write_axial_force(self, data):
         """Write the message: axial force in Newton.
 
         Parameters
         ----------
-        lut_gravity : `list`
-            Gravity component of look-up table (LUT) force.
-        lut_temperature : `list`
-            Temperature component of look-up table (LUT) force.
-        applied : `list`
-            Applied force.
-        measured : `list`
-            Measured force.
-        hardpoint_correction : `list`
-            Hardpoint compensation force correction.
+        data : `dict`
+            Data of axial force.
         """
 
         msg = {
             "id": "axialForce",
-            "lutGravity": lut_gravity,
-            "lutTemperature": lut_temperature,
-            "applied": applied,
-            "measured": measured,
-            "hardpointCorrection": hardpoint_correction,
+            "lutGravity": list(data["lutGravity"]),
+            "lutTemperature": list(data["lutTemperature"]),
+            "applied": list(data["applied"]),
+            "measured": list(data["measured"]),
+            "hardpointCorrection": list(data["hardpointCorrection"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_tangent_force(
-        self, lut_gravity, lut_temperature, applied, measured, hardpoint_correction
-    ):
+    async def write_tangent_force(self, data):
         """Write the message: tangent force in Newton.
 
         Parameters
         ----------
-        lut_gravity : `list`
-            Gravity component of look-up table (LUT) force.
-        lut_temperature : `list`
-            Temperature component of look-up table (LUT) force.
-        applied : `list`
-            Applied force.
-        measured : `list`
-            Measured force.
-        hardpoint_correction : `list`
-            Hardpoint compensation force correction.
+        data : `dict`
+            Data of axial force.
         """
 
         msg = {
             "id": "tangentForce",
-            "lutGravity": lut_gravity,
-            "lutTemperature": lut_temperature,
-            "applied": applied,
-            "measured": measured,
-            "hardpointCorrection": hardpoint_correction,
+            "lutGravity": list(data["lutGravity"]),
+            "lutTemperature": list(data["lutTemperature"]),
+            "applied": list(data["applied"]),
+            "measured": list(data["measured"]),
+            "hardpointCorrection": list(data["hardpointCorrection"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_temperature(self, ring, intake, exhaust):
+    async def write_temperature(self, data):
         """Write the message: cell temperature in degree C.
 
         Parameters
         ----------
-        ring : `list`
-            Offset of ring temperatures.
-        intake : `list`
-            Offset of intake temperatures.
-        exhaust : `list`
-            Offset of exhaust temperatures.
+        data : `dict`
+            Data of cell temperature.
         """
 
         msg = {
             "id": "temperature",
-            "ring": ring,
-            "intake": intake,
-            "exhaust": exhaust,
+            "ring": list(data["ring"]),
+            "intake": list(data["intake"]),
+            "exhaust": list(data["exhaust"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_zenith_angle(
-        self, measured, inclinometer_raw, inclinometer_processed
-    ):
+    async def write_zenith_angle(self, data):
         """Write the message: zenith angle in degree.
 
         Parameters
         ----------
-        measured : `float`
-            Measured angle.
-        inclinometer_raw : `float`
-            Reading raw angle of inclinometer.
-        inclinometer_processed : `float`
-            Processed angle of inclinometer.
+        data : `dict`
+            Data of zenith angle.
         """
 
         msg = {
             "id": "zenithAngle",
-            "measured": measured,
-            "inclinometerRaw": inclinometer_raw,
-            "inclinometerProcessed": inclinometer_processed,
+            "measured": data["measured"],
+            "inclinometerRaw": data["inclinometerRaw"],
+            "inclinometerProcessed": data["inclinometerProcessed"],
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_axial_actuator_steps(self, steps):
+    async def write_axial_actuator_steps(self, data):
         """Write the message: axial actuator steps.
 
         Parameters
         ----------
-        steps : `list`
-            Axial actuator steps.
+        data : `dict`
+            Data of axial actuator steps.
         """
 
         msg = {
             "id": "axialActuatorSteps",
-            "steps": steps,
+            "steps": list(data["steps"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_tangent_actuator_steps(self, steps):
+    async def write_tangent_actuator_steps(self, data):
         """Write the message: tangent actuator steps.
 
         Parameters
         ----------
-        steps : `list`
-            Tangent actuator steps.
+        data : `dict`
+            Data of tangent actuator steps.
         """
 
         msg = {
             "id": "tangentActuatorSteps",
-            "steps": steps,
+            "steps": list(data["steps"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_axial_encoder_positions(self, position):
+    async def write_axial_encoder_positions(self, data):
         """Write the message: axial actuator encoder positions in micron.
 
         Parameters
         ----------
-        position : `list`
-            Axial actuator encoder position.
+        data : `dict`
+            Data of axial actuator encoder position.
         """
 
         msg = {
             "id": "axialEncoderPositions",
-            "position": position,
+            "position": list(data["position"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_tangent_encoder_positions(self, position):
+    async def write_tangent_encoder_positions(self, data):
         """Write the message: tangent actuator encoder positions in micron.
 
         Parameters
         ----------
-        position : `list`
-            Tangent actuator encoder position.
+        data : `dict`
+            Data of tangent actuator encoder position.
         """
 
         msg = {
             "id": "tangentEncoderPositions",
-            "position": position,
+            "position": list(data["position"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_ilc_data(self, status):
+    async def write_ilc_data(self, data):
         """Write the message: inner-loop controller (ILC) data.
 
         Parameters
         ----------
-        status : `list`
-            ILC status.
+        data : `dict`
+            Data of ILC status.
         """
 
         msg = {
             "id": "ilcData",
-            "status": status,
+            "status": list(data["status"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_displacement_sensors(self, theta_z, delta_z):
+    async def write_displacement_sensors(self, data):
         """Write the message: raw measurements from displacement sensors.
 
         Parameters
         ----------
-        theta_z : `list`
-            Readings of theta-z from displacement sensors in micron.
-        delta_z : `list`
-            Readings of delta-z from displacement sensors in micron.
+        data : `dict`
+            Data of displacement sensors.
         """
 
         msg = {
             "id": "displacementSensors",
-            "thetaZ": theta_z,
-            "deltaZ": delta_z,
+            "thetaZ": list(data["thetaZ"]),
+            "deltaZ": list(data["deltaZ"]),
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_force_balance(self, fx, fy, fz, mx, my, mz):
+    async def write_force_balance(self, data):
         """Write the message: net forces and moments as commanded by the force
         balance system.
 
         Parameters
         ----------
-        fx : `float`
-            Total x-force in Newton.
-        fy : `float`
-            Total y-force in Newton.
-        fz : `float`
-            Total z-force in Newton.
-        mx : `float`
-            Total x-moment in Newton * meter.
-        my : `float`
-            Total y-moment in Newton * meter.
-        mz : `float`
-            Total z-moment in Newton * meter.
+        data : `dict`
+            Data of force balance system.
         """
 
         msg = {
             "id": "forceBalance",
-            "fx": fx,
-            "fy": fy,
-            "fz": fz,
-            "mx": mx,
-            "my": my,
-            "mz": mz,
+            "fx": data["fx"],
+            "fy": data["fy"],
+            "fz": data["fz"],
+            "mx": data["mx"],
+            "my": data["my"],
+            "mz": data["mz"],
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_net_forces_total(self, fx, fy, fz):
+    async def write_net_forces_total(self, data):
         """Write the message: total actuator net forces in Newton.
 
         Parameters
         ----------
-        fx : `float`
-            Net x-force.
-        fy : `float`
-            Net y-force.
-        fz : `float`
-            Net z-force.
+        data : `dict`
+            Data of total actuator net forces.
         """
 
         msg = {
             "id": "netForcesTotal",
-            "fx": fx,
-            "fy": fy,
-            "fz": fz,
+            "fx": data["fx"],
+            "fy": data["fy"],
+            "fz": data["fz"],
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_net_moments_total(self, mx, my, mz):
+    async def write_net_moments_total(self, data):
         """Write the message: total actuator net moments of force in
         Newton * meter.
 
         Parameters
         ----------
-        mx : `float`
-            Net x-moment.
-        my : `float`
-            Net y-moment.
-        mz : `float`
-            Net z-moment.
+        data : `dict`
+            Data of total actuator net moments of force.
         """
 
         msg = {
             "id": "netMomentsTotal",
-            "mx": mx,
-            "my": my,
-            "mz": mz,
+            "mx": data["mx"],
+            "my": data["my"],
+            "mz": data["mz"],
         }
         await write_json_packet(self.writer, msg)
 
-    async def write_power_status(
-        self,
-        motor_voltage=23.0,
-        motor_current=8.5,
-        comm_voltage=23.0,
-        comm_current=6.5,
-        rms=0.05,
-    ):
+    async def write_power_status(self, data):
         """Write the message: power status.
 
         Parameters
         ----------
-        motor_voltage : `float`, optional
-            Total motor voltage. (the default is 23.0)
-        motor_current : `float`, optional
-            Total motor current in Ampere. (the default is 8.5)
-        comm_voltage : `float`, optional
-            Total communication voltage. (the default is 23.0)
-        comm_current : `float`, optional
-            Total communication current in Ampere. (the default is 6.5)
-        rms : `float`, optional
-            RMS variation. (default is 0.5)
+        data : `dict`
+            Data of power status.
         """
-
-        rms_power = np.random.normal(scale=rms, size=4)
 
         msg = {
             "id": "powerStatus",
-            "motorVoltage": motor_voltage + rms_power[0],
-            "motorCurrent": motor_current + rms_power[1],
-            "commVoltage": comm_voltage + rms_power[2],
-            "commCurrent": comm_current + rms_power[3],
+            "motorVoltage": data["motorVoltage"],
+            "motorCurrent": data["motorCurrent"],
+            "commVoltage": data["commVoltage"],
+            "commCurrent": data["commCurrent"],
         }
         await write_json_packet(self.writer, msg)
