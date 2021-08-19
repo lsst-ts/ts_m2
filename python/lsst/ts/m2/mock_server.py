@@ -57,6 +57,8 @@ class MockServer:
         IP port for the command server. (the default is 50000)
     port_telemetry : `int`, optional
         IP port for the telemetry server. (the default is 50001)
+    timeout_in_second : `float`, optional
+        Read timeout in second. (the default is 0.05)
     log : `logging.Logger` or None, optional
         A logger. If None, a logger will be instantiated. (the default is
         None)
@@ -76,12 +78,14 @@ class MockServer:
         Command server.
     server_telemetry : `tcpip.OneClientServer`
         Telemetry server.
+    timeout_in_second : `float`
+        Read timeout in second.
     """
 
     # 20 Hz (= 0.05 second)
     PERIOD_TELEMETRY_IN_SECOND = 0.05
 
-    TIMEOUT_IN_SECOND = 0.01
+    FAKE_ERROR_CODE = 99
 
     def __init__(
         self,
@@ -90,6 +94,7 @@ class MockServer:
         host,
         port_command=50000,
         port_telemetry=50001,
+        timeout_in_second=0.05,
         log=None,
         socket_family=socket.AF_UNSPEC,
     ):
@@ -121,6 +126,8 @@ class MockServer:
             self._connect_state_changed_callback_telemetry,
             family=socket_family,
         )
+
+        self.timeout_in_second = timeout_in_second
 
         # Following two attributes have the type of asyncio.Future
         self._monitor_loop_task_command = salobj.make_done_future()
@@ -184,6 +191,13 @@ class MockServer:
                 if self.model.in_position:
                     await self._message_event.write_m2_assembly_in_position(True)
 
+                if not self.model.error_cleared:
+                    await self._message_event.write_summary_state(salobj.State.FAULT)
+                    await self._message_event.write_error_code(self.FAKE_ERROR_CODE)
+                    await self._message_event.write_force_balance_system_status(
+                        self.model.force_balance_system_status
+                    )
+
                 await asyncio.sleep(self.PERIOD_TELEMETRY_IN_SECOND)
 
                 if self.server_command.reader.at_eof():
@@ -229,13 +243,15 @@ class MockServer:
         await asyncio.sleep(0.01)
         await self._message_event.write_detailed_state(DetailedState.Available)
 
+        await self._message_event.write_summary_state(salobj.State.OFFLINE)
+
     async def _process_message_command(self):
         """Process the incoming message of command."""
 
         try:
             msg_input = await asyncio.wait_for(
                 self.server_command.reader.readuntil(separator=tcpip.TERMINATOR),
-                self.TIMEOUT_IN_SECOND,
+                self.timeout_in_second,
             )
 
             msg = self._decode_and_deserialize_json_message(msg_input)
@@ -256,7 +272,7 @@ class MockServer:
                 await self._reply_command(sequence_id, command_status)
 
         except asyncio.TimeoutError:
-            await asyncio.sleep(self.TIMEOUT_IN_SECOND)
+            await asyncio.sleep(self.timeout_in_second)
 
         except asyncio.IncompleteReadError:
             raise
@@ -454,7 +470,7 @@ class MockServer:
         try:
             msg = await asyncio.wait_for(
                 self.server_telemetry.reader.readuntil(separator=tcpip.TERMINATOR),
-                self.TIMEOUT_IN_SECOND,
+                self.timeout_in_second,
             )
             msg_tel = self._decode_and_deserialize_json_message(msg)
 
@@ -466,7 +482,7 @@ class MockServer:
                 self.model.zenith_angle = 90.0 - msg_tel["actualPosition"]
 
         except asyncio.TimeoutError:
-            await asyncio.sleep(self.TIMEOUT_IN_SECOND)
+            await asyncio.sleep(self.timeout_in_second)
 
         except asyncio.IncompleteReadError:
             raise
