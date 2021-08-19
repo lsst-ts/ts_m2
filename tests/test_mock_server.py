@@ -19,7 +19,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import pathlib
 import unittest
 import contextlib
 import asyncio
@@ -27,9 +26,10 @@ import logging
 import numpy as np
 
 from lsst.ts import tcpip
+from lsst.ts import salobj
 from lsst.ts.idl.enums import MTM2
 
-from lsst.ts.m2 import MsgType, DetailedState, TcpClient, MockServer
+from lsst.ts.m2 import MsgType, DetailedState, TcpClient, MockServer, get_module_path
 
 
 class TestMockServer(unittest.IsolatedAsyncioTestCase):
@@ -37,7 +37,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.config_dir = pathlib.Path(__file__).parents[0]
+        cls.config_dir = get_module_path() / "tests"
         cls.host = tcpip.LOCAL_HOST
         cls.log = logging.getLogger()
         cls.maxsize_queue = 1000
@@ -108,7 +108,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
 
             # Check the one-time message
             await asyncio.sleep(0.5)
-            self.assertGreaterEqual(client_cmd.queue.qsize(), 8)
+            self.assertGreaterEqual(client_cmd.queue.qsize(), 9)
 
             # Check the TCP/IP connection
             msg_tcpip = client_cmd.queue.get_nowait()
@@ -134,7 +134,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             msg_tel_src = client_cmd.queue.get_nowait()
             self.assertEqual(msg_tel_src["id"], "inclinationTelemetrySource")
             self.assertEqual(
-                msg_tel_src["source"], MTM2.InclinationTelemetrySource.ONBOARD
+                msg_tel_src["source"], int(MTM2.InclinationTelemetrySource.ONBOARD)
             )
 
             # Check the temperature offset
@@ -159,6 +159,10 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 msg_detailed_state_available["detailedState"], DetailedState.Available
             )
+
+            msg_state = client_cmd.queue.get_nowait()
+            self.assertEqual(msg_state["id"], "summaryState")
+            self.assertEqual(msg_state["summaryState"], salobj.State.OFFLINE)
 
     async def test_monitor_msg_cmd_ack(self):
         async with self.make_server() as server, self.make_clients(server) as (
@@ -301,6 +305,20 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(msg_success["id"], "success")
 
+    async def test_cmd_standby_check_summary_state(self):
+        async with self.make_server() as server, self.make_clients(server) as (
+            client_cmd,
+            client_tel,
+        ):
+
+            await client_cmd.write(MsgType.Command, "standby")
+            await asyncio.sleep(0.5)
+
+            msg_state = self._get_latest_message(client_cmd.queue, "summaryState")
+
+            self.assertEqual(msg_state["id"], "summaryState")
+            self.assertEqual(msg_state["summaryState"], int(salobj.State.STANDBY))
+
     async def test_cmd_start(self):
         async with self.make_server() as server, self.make_clients(server) as (
             client_cmd,
@@ -394,6 +412,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
         ):
 
             server.model.actuator_power_on = True
+            server.model.switch_force_balance_system(True)
             mirror_position_set_point = dict(
                 [(axis, 1.0) for axis in ("x", "y", "z", "xRot", "yRot", "zRot")]
             )
@@ -435,12 +454,22 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             client_cmd,
             client_tel,
         ):
-            server.model.error_cleared = False
+            # Put the system into Fault and wait for some error message
+            server.model.fault()
+            await asyncio.sleep(1)
 
+            # Check the error code
+            msg_error_code = self._get_latest_message(client_cmd.queue, "errorCode")
+            self.assertEqual(msg_error_code["errorCode"], server.FAKE_ERROR_CODE)
+
+            # Clear the error
             await client_cmd.write(MsgType.Command, "clearErrors")
             await asyncio.sleep(0.5)
 
             self.assertTrue(server.model.error_cleared)
+
+            msg_state = self._get_latest_message(client_cmd.queue, "summaryState")
+            self.assertEqual(msg_state["summaryState"], int(salobj.State.OFFLINE))
 
     async def test_cmd_switch_force_balance_system_fail(self):
         async with self.make_server() as server, self.make_clients(server) as (
@@ -492,7 +521,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             await client_cmd.write(
                 MsgType.Command,
                 "selectInclinationSource",
-                msg_details={"source": source},
+                msg_details={"source": int(source)},
             )
             await asyncio.sleep(0.5)
 
@@ -510,8 +539,8 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             client_tel,
         ):
             ring = [11.0] * 12
-            intake = [13.0] * 2
-            exhaust = [14.0] * 2
+            intake = [11.0] * 2
+            exhaust = [11.0] * 2
             await client_cmd.write(
                 MsgType.Command,
                 "setTemperatureOffset",
@@ -550,8 +579,8 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             server.model.switch_force_balance_system(True)
 
             # Check the telemetry
-            await asyncio.sleep(3)
-            self.assertGreater(client_tel.queue.qsize(), 500)
+            await asyncio.sleep(4)
+            self.assertGreater(client_tel.queue.qsize(), 350)
 
     async def test_telemetry_get_mtmount_elevation(self):
         async with self.make_server() as server, self.make_clients(server) as (

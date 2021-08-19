@@ -19,197 +19,148 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import pathlib
-import numpy as np
+import asyncio
+import logging
+import sys
+import contextlib
 import unittest
 
-from lsst.ts.idl.enums import MTM2
+from lsst.ts import tcpip
+from lsst.ts.m2 import MockServer, Model, get_module_path, CommandStatus, MsgType
 
-from lsst.ts.m2 import Model
 
-
-class TestModel(unittest.TestCase):
+class TestModel(unittest.IsolatedAsyncioTestCase):
     """Test the Model class."""
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
+        cls.config_dir = get_module_path() / "tests"
+        cls.host = tcpip.LOCAL_HOST
+        cls.timeout_in_second = 0.05
 
-        self.model = Model()
+        logging.basicConfig(
+            level=logging.INFO, handlers=[logging.StreamHandler(sys.stdout)]
+        )
+        cls.log = logging.getLogger()
 
-        config_dir = pathlib.Path(__file__).parents[0]
+    @contextlib.asynccontextmanager
+    async def make_server(self):
+        """Instantiate the mock server of M2 for the test."""
 
-        self.model.configure(config_dir, "harrisLUT")
+        server = MockServer(
+            self.config_dir,
+            "harrisLUT",
+            self.host,
+            timeout_in_second=self.timeout_in_second,
+            port_command=0,
+            port_telemetry=0,
+            log=self.log,
+        )
+        await server.start()
 
-    def test_configure(self):
+        try:
+            yield server
+        finally:
+            await server.close()
 
-        self.assertEqual(len(self.model.lut.keys()), 10)
+    @contextlib.asynccontextmanager
+    async def make_model(self, server):
+        """Make the model (or TCP/IP client) that talks to the server and wait
+        for it to connect.
 
-    def test_apply_forces(self):
+        Returns Model.
+        """
 
-        force_axial, force_tangent = self._apply_forces()
-
-        np.testing.assert_array_equal(self.model.axial_forces["applied"], force_axial)
-        np.testing.assert_array_equal(
-            self.model.tangent_forces["applied"], force_tangent
+        model = Model(log=self.log)
+        model.start(
+            server.server_command.host,
+            server.server_command.port,
+            server.server_telemetry.port,
         )
 
-    def _apply_forces(self):
+        # Wait a little time to construct the connection
+        await asyncio.sleep(2)
 
-        force_axial = [1] * self.model.n_actuators
-        force_tangent = [2] * self.model.n_tangent_actuators
-        self.model.apply_forces(force_axial, force_tangent)
+        try:
+            yield model
+        finally:
+            await model.close()
 
-        return force_axial, force_tangent
+        self.assertFalse(model._start_connection)
+        self.assertIsNone(model.client_command)
+        self.assertIsNone(model.client_telemetry)
+        self.assertEqual(model.last_command_status, CommandStatus.Unknown)
 
-    def test_check_axial_force_limit(self):
+    async def test_close(self):
+        model = Model()
+        await model.close()
 
-        force_axial = self._apply_forces()[0]
-        demanded_axial_force = self.model.check_axial_force_limit()
+        model.start(tcpip.LOCAL_HOST, 0, 0)
+        await model.close()
 
-        np.testing.assert_array_equal(demanded_axial_force, force_axial)
+    async def test_are_clients_connected(self):
+        async with self.make_server() as server, self.make_model(server) as model:
+            self.assertTrue(model.are_clients_connected())
 
-    def test_check_axial_force_limit_error(self):
+    async def test_task_connection(self):
+        async with self.make_server() as server, self.make_model(server) as model:
 
-        force_axial = [0] * self.model.n_actuators
-        force_axial[2] = 999
+            # Connection is on in the initial beginning
+            self.assertTrue(model.are_clients_connected())
+            self.assertTrue(model._start_connection)
 
-        self.assertRaises(RuntimeError, self.model.check_axial_force_limit, force_axial)
+            # Close the connection between the client and server
+            await asyncio.gather(
+                server.server_command.close_client(),
+                server.server_telemetry.close_client(),
+            )
+            self.assertFalse(model.are_clients_connected())
 
-    def test_check_tangent_force_limit(self):
+            # Wait a little time to reconstruct the connection
+            await asyncio.sleep(1)
+            self.assertTrue(model.are_clients_connected())
 
-        force_tangent = self._apply_forces()[1]
-        demanded_tanget_force = self.model.check_tangent_force_limit()
+    async def test_task_analyze_message(self):
+        async with self.make_server() as server, self.make_model(server) as model:
 
-        np.testing.assert_array_equal(demanded_tanget_force, force_tangent)
+            # Wait a little time to collect the event messages
+            await asyncio.sleep(1)
+            self.assertEqual(model.queue_event.qsize(), 9)
 
-    def test_check_tangent_force_limit_error(self):
+    async def test_last_command_status_success(self):
+        async with self.make_server() as server, self.make_model(server) as model:
 
-        force_tangent = [0] * self.model.n_tangent_actuators
-        force_tangent[2] = 9999
+            await model.client_command.write(MsgType.Command, "enterControl")
 
-        self.assertRaises(
-            RuntimeError, self.model.check_tangent_force_limit, force_tangent
-        )
+            # Wait a little time to collect the messages
+            await asyncio.sleep(2)
+            self.assertEqual(model.last_command_status, CommandStatus.Success)
 
-    def test_reset_force_offsets(self):
+    async def test_last_command_status_fail(self):
+        async with self.make_server() as server, self.make_model(server) as model:
 
-        self._apply_forces()
+            await model.client_command.write(
+                MsgType.Command,
+                "switchForceBalanceSystem",
+                msg_details={"status": True},
+            )
 
-        self.model.reset_force_offsets()
+            # Wait a little time to collect the messages
+            await asyncio.sleep(2)
+            self.assertEqual(model.last_command_status, CommandStatus.Fail)
 
-        np.testing.assert_array_equal(
-            self.model.axial_forces["applied"], [0] * self.model.n_actuators
-        )
-        np.testing.assert_array_equal(
-            self.model.tangent_forces["applied"], [0] * self.model.n_tangent_actuators
-        )
+    async def test_last_command_status_ack_success(self):
+        async with self.make_server() as server, self.make_model(server) as model:
 
-    def test_clear_errors(self):
+            await model.client_command.write(MsgType.Command, "enable")
 
-        self.model.error_cleared = False
-        self.model.clear_errors()
+            # Wait a little time to collect the messages
+            await asyncio.sleep(2)
+            self.assertEqual(model.last_command_status, CommandStatus.Ack)
 
-        self.assertTrue(self.model.error_cleared)
-
-    def test_select_inclination_source(self):
-
-        self.assertEqual(
-            self.model.inclination_source, MTM2.InclinationTelemetrySource.ONBOARD
-        )
-
-        self.model.select_inclination_source(2)
-
-        self.assertEqual(
-            self.model.inclination_source, MTM2.InclinationTelemetrySource.MTMOUNT
-        )
-
-    def test_set_temperature_offset(self):
-
-        self.assertRaises(NotImplementedError, self.model.set_temperature_offset)
-
-    def test_get_telemetry_data(self):
-
-        self.model.force_balance_system_status = True
-        force_axial, force_tangent = self._apply_forces()
-
-        telemetry_data, in_position = self.model.get_telemetry_data()
-
-        self.assertFalse(in_position)
-        self.assertEqual(len(telemetry_data), 11)
-
-    def test_handle_forces(self):
-
-        self.model.force_balance_system_status = True
-        force_axial, force_tangent = self._apply_forces()
-
-        force_rms = 0.5
-        in_position = self.model.handle_forces(force_rms=0.5)
-
-        self.assertFalse(in_position)
-
-        # Check the axial forces
-        self.assertNotEqual(
-            np.sum(np.abs(self.model.axial_forces["hardpointCorrection"])), 0
-        )
-        self.assertLess(
-            np.std(self.model.axial_forces["hardpointCorrection"]), 3 * force_rms
-        )
-        self.assertNotEqual(np.sum(np.abs(self.model.axial_forces["measured"])), 0)
-        self.assertLess(np.std(self.model.axial_forces["measured"]), 3 * force_rms)
-
-        # Check the tangent forces
-        self.assertNotEqual(
-            np.sum(np.abs(self.model.tangent_forces["hardpointCorrection"])), 0
-        )
-        self.assertLess(
-            np.std(self.model.tangent_forces["hardpointCorrection"]), 3 * force_rms
-        )
-        self.assertNotEqual(np.sum(np.abs(self.model.tangent_forces["measured"])), 0)
-        self.assertLess(np.std(self.model.tangent_forces["measured"]), 3 * force_rms)
-
-    def test_calc_look_up_forces(self):
-
-        self.model.zenith_angle = 10
-        self.model.calc_look_up_forces()
-
-        self.assertAlmostEqual(self.model.axial_forces["lutTemperature"][0], -9.683872)
-        self.assertAlmostEqual(self.model.axial_forces["lutGravity"][0], 319.58224)
-
-        self.assertAlmostEqual(self.model.tangent_forces["lutGravity"][0], 0)
-        self.assertAlmostEqual(self.model.tangent_forces["lutGravity"][1], 780.89259849)
-
-    def test_force_dynamics_in_position(self):
-
-        demand = np.array([1, 2])
-        current = demand.copy()
-        force_rms = 0.5
-        in_position, final_force = self.model.force_dynamics(
-            demand, current, force_rms, force_rate=100.0
-        )
-
-        self.assertTrue(in_position)
-        np.testing.assert_array_equal(final_force, demand)
-
-    def test_force_dynamics_not_in_position(self):
-
-        demand = np.array([1, 2])
-        current = np.array([5, -5])
-        force_rms = 0.5
-        in_position, final_force = self.model.force_dynamics(
-            demand, current, force_rms, force_rate=100.0
-        )
-
-        self.assertFalse(in_position)
-        np.testing.assert_array_equal(final_force, [1, 0])
-
-    def test_handle_position_mirror(self):
-
-        mirror_position_set_point = dict(
-            [(axis, 1.0) for axis in ("x", "y", "z", "xRot", "yRot", "zRot")]
-        )
-
-        self.model.handle_position_mirror(mirror_position_set_point)
-
-        self.assertEqual(self.model.mirror_position, mirror_position_set_point)
+            # Wait a little time to collect the messages
+            await asyncio.sleep(7)
+            self.assertEqual(model.last_command_status, CommandStatus.Success)
 
 
 if __name__ == "__main__":

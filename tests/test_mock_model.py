@@ -19,13 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import pathlib
 import numpy as np
 import unittest
 
 from lsst.ts.idl.enums import MTM2
 
-from lsst.ts.m2 import MockModel
+from lsst.ts.m2 import MockModel, get_module_path
 
 
 class TestMockModel(unittest.TestCase):
@@ -35,8 +34,7 @@ class TestMockModel(unittest.TestCase):
 
         self.model = MockModel()
 
-        config_dir = pathlib.Path(__file__).parents[0]
-
+        config_dir = get_module_path() / "tests"
         self.model.configure(config_dir, "harrisLUT")
 
     def test_configure(self):
@@ -52,6 +50,24 @@ class TestMockModel(unittest.TestCase):
         self.model.temperature["exhaust"] = [99, 99]
 
         self.assertTrue(self.model.is_cell_temperature_high())
+
+    def test_fault_actuator_power_not_on(self):
+
+        self.model.fault()
+        self.assertFalse(self.model.error_cleared)
+        self.assertFalse(self.model.force_balance_system_status)
+
+    def test_fault_actuator_power_on(self):
+
+        # Turn on the power and the switch should work
+        self.model.actuator_power_on = True
+        self.assertTrue(self.model.switch_force_balance_system(True))
+        self.assertTrue(self.model.force_balance_system_status)
+
+        # Fault the model
+        self.model.fault()
+        self.assertFalse(self.model.error_cleared)
+        self.assertFalse(self.model.force_balance_system_status)
 
     def test_switch_force_balance_system(self):
 
@@ -323,9 +339,12 @@ class TestMockModel(unittest.TestCase):
         # This should fail
         self.assertFalse(self.model.handle_position_mirror(mirror_position_set_point))
 
-        # This should succeed
+        # This should fail again
         self.model.actuator_power_on = True
+        self.assertFalse(self.model.handle_position_mirror(mirror_position_set_point))
 
+        # This should succeed in the final
+        self.model.switch_force_balance_system(True)
         result = self.model.handle_position_mirror(mirror_position_set_point)
 
         self.assertTrue(result)
