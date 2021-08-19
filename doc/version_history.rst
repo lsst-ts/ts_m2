@@ -2,6 +2,14 @@
 Version History
 ===============
 
+v0.4.0
+------
+
+* Update the **Model** class to use the **TcpClient** class.
+* Update the **M2** class to use the TCP/IP interface with the updated **Model** class.
+* Update the **doc/uml/m2_class.uml**.
+* Move ``bin.src/run_mtm2.py`` to ``bin/run_mtm2.py``.
+
 v0.3.6
 ------
 
