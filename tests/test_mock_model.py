@@ -21,10 +21,11 @@
 
 import numpy as np
 import unittest
+import pathlib
 
 from lsst.ts.idl.enums import MTM2
 
-from lsst.ts.m2 import MockModel, get_module_path
+from lsst.ts.m2 import MockModel
 
 
 class TestMockModel(unittest.TestCase):
@@ -34,7 +35,7 @@ class TestMockModel(unittest.TestCase):
 
         self.model = MockModel()
 
-        config_dir = get_module_path() / "tests"
+        config_dir = pathlib.Path(__file__).parents[0]
         self.model.configure(config_dir, "harrisLUT")
 
     def test_configure(self):

@@ -24,9 +24,10 @@ import logging
 import sys
 import contextlib
 import unittest
+import pathlib
 
 from lsst.ts import tcpip
-from lsst.ts.m2 import MockServer, Model, get_module_path, CommandStatus, MsgType
+from lsst.ts.m2 import MockServer, Model, CommandStatus, MsgType
 
 
 class TestModel(unittest.IsolatedAsyncioTestCase):
@@ -34,7 +35,7 @@ class TestModel(unittest.IsolatedAsyncioTestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.config_dir = get_module_path() / "tests"
+        cls.config_dir = pathlib.Path(__file__).parents[0]
         cls.host = tcpip.LOCAL_HOST
         cls.timeout_in_second = 0.05
 
@@ -48,14 +49,13 @@ class TestModel(unittest.IsolatedAsyncioTestCase):
         """Instantiate the mock server of M2 for the test."""
 
         server = MockServer(
-            self.config_dir,
-            "harrisLUT",
             self.host,
             timeout_in_second=self.timeout_in_second,
             port_command=0,
             port_telemetry=0,
             log=self.log,
         )
+        server.model.configure(self.config_dir, "harrisLUT")
         await server.start()
 
         try:

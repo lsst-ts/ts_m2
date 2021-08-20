@@ -46,10 +46,6 @@ class MockServer:
 
     Parameters
     ----------
-    config_dir : `pathlib.PosixPath`
-        Configuration directory.
-    lut_path : `str`
-        Look-up table (LUT) path.
     host : `str`
         IP address for this server; typically `LOCALHOST` for IP4
         or "::" for IP6.
@@ -89,8 +85,6 @@ class MockServer:
 
     def __init__(
         self,
-        config_dir,
-        lut_path,
         host,
         port_command=50000,
         port_telemetry=50001,
@@ -108,7 +102,6 @@ class MockServer:
         self.model = MockModel(
             log=self.log, telemetry_interval=self.PERIOD_TELEMETRY_IN_SECOND
         )
-        self.model.configure(config_dir, lut_path)
 
         self.server_command = tcpip.OneClientServer(
             "Commands",

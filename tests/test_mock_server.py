@@ -24,12 +24,13 @@ import contextlib
 import asyncio
 import logging
 import numpy as np
+import pathlib
 
 from lsst.ts import tcpip
 from lsst.ts import salobj
 from lsst.ts.idl.enums import MTM2
 
-from lsst.ts.m2 import MsgType, DetailedState, TcpClient, MockServer, get_module_path
+from lsst.ts.m2 import MsgType, DetailedState, TcpClient, MockServer
 
 
 class TestMockServer(unittest.IsolatedAsyncioTestCase):
@@ -37,7 +38,7 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.config_dir = get_module_path() / "tests"
+        cls.config_dir = pathlib.Path(__file__).parents[0]
         cls.host = tcpip.LOCAL_HOST
         cls.log = logging.getLogger()
         cls.maxsize_queue = 1000
@@ -47,13 +48,12 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
         """Instantiate the mock server of M2 for the test."""
 
         server = MockServer(
-            self.config_dir,
-            "harrisLUT",
             self.host,
             port_command=0,
             port_telemetry=0,
             log=self.log,
         )
+        server.model.configure(self.config_dir, "harrisLUT")
         await server.start()
 
         try:

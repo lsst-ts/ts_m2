@@ -28,7 +28,7 @@ from lsst.ts import tcpip
 from lsst.ts import salobj
 
 from .config_schema import CONFIG_SCHEMA
-from . import get_module_path, MsgType, Model, MockServer, CommandStatus
+from . import MsgType, Model, MockServer, CommandStatus
 from . import __version__
 
 __all__ = ["M2"]
@@ -213,15 +213,16 @@ class M2(salobj.ConfigurableCsc):
         # Run the mock server in the simulation mode
         # self.simulation_mode is the attribute from upstream: BaseCsc
         if self.simulation_mode == 1 and self._mock_server is None:
-            config_dir = get_module_path() / "tests"
+
             self._mock_server = MockServer(
-                config_dir,
-                "harrisLUT",
                 tcpip.LOCAL_HOST,
                 port_command=0,
                 port_telemetry=0,
                 log=self.log,
             )
+            # This is a hacking to get the configuration files in the OFFLINE
+            # state
+            self._mock_server.model.configure(self.config_dir, "harrisLUT")
 
             await self._mock_server.start()
 

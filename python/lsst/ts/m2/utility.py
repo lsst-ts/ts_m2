@@ -20,11 +20,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
-import pathlib
 
 from lsst.ts import tcpip
 
-__all__ = ["write_json_packet", "get_module_path", "check_queue_size"]
+__all__ = ["write_json_packet", "check_queue_size"]
 
 
 async def write_json_packet(writer, msg_input):
@@ -43,17 +42,6 @@ async def write_json_packet(writer, msg_input):
 
     writer.write(msg)
     await writer.drain()
-
-
-def get_module_path():
-    """Get the path of module.
-
-    Returns
-    -------
-    `pathlib.PosixPath`
-        Path of module.
-    """
-    return pathlib.Path(__file__).parents[4]
 
 
 def check_queue_size(queue, log):

@@ -23,16 +23,11 @@ import logging
 import unittest
 import asyncio
 
-from lsst.ts.m2 import get_module_path, check_queue_size
+from lsst.ts.m2 import check_queue_size
 
 
 class TestUtility(unittest.IsolatedAsyncioTestCase):
     """Test the functions in utility."""
-
-    def test_get_module_path(self):
-
-        path_python_files = get_module_path() / "python"
-        self.assertTrue(path_python_files.exists())
 
     def test_check_queue_size(self):
 
