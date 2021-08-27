@@ -128,7 +128,7 @@ class M2(salobj.ConfigurableCsc):
 
         self.config = None
 
-        # Run the loops or not.
+        # Run the loops of telemetry and event or not
         self._run_loops = False
 
         # Task of the telemetry loop from component (asyncio.Future)
@@ -153,7 +153,7 @@ class M2(salobj.ConfigurableCsc):
         await self.model.client_telemetry.write(
             MsgType.Telemetry,
             "elevation",
-            msg_details={"actualPosition": data.actualPosition},
+            msg_details=dict(actualPosition=data.actualPosition),
             comp_name="MTMount",
         )
 
@@ -175,7 +175,7 @@ class M2(salobj.ConfigurableCsc):
             await self.stop_loops()
 
         except Exception:
-            self.log.exception("Exception while stopping the loops.")
+            self.log.exception("Exception while stopping the loops. Ignoring...")
 
         finally:
             await self.model.close()
@@ -481,9 +481,133 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        self._assert_state("enterControl", salobj.State.OFFLINE)
+        self._assert_state("enterControl", [salobj.State.OFFLINE])
 
         await self._write_command_to_server("enterControl", data)
+
+    async def do_start(self, data):
+        self._assert_state("start", [salobj.State.STANDBY])
+
+        await self._write_command_to_server("start", data)
+
+    async def do_enable(self, data):
+        self._assert_state("enable", [salobj.State.DISABLED])
+
+        await self._write_command_to_server("enable", data)
+
+    async def do_disable(self, data):
+        self._assert_state("disable", [salobj.State.ENABLED])
+
+        await self._write_command_to_server("disable", data)
+
+    async def do_standby(self, data):
+        self._assert_state("standby", [salobj.State.DISABLED])
+
+        await self._write_command_to_server("standby", data)
+
+    async def do_exitControl(self, data):
+        self._assert_state("exitControl", [salobj.State.STANDBY])
+
+        await self._write_command_to_server("exitControl", data)
+
+    async def do_applyForces(self, data):
+        """Apply force.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+        self.assert_enabled()
+
+        message_details = dict(axial=data.axial, tangent=data.tangent)
+        await self._write_command_to_server(
+            "applyForces", data, message_details=message_details
+        )
+
+    async def do_positionMirror(self, data):
+        """Position Mirror.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+        self.assert_enabled()
+
+        message_details = dict(
+            x=data.x, y=data.y, z=data.z, xRot=data.xRot, yRot=data.yRot, zRot=data.zRot
+        )
+        await self._write_command_to_server(
+            "positionMirror", data, message_details=message_details
+        )
+
+    async def do_resetForceOffsets(self, data):
+        """Resets user defined forces to zeros.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+        self.assert_enabled()
+
+        await self._write_command_to_server("resetForceOffsets", data)
+
+    async def do_clearErrors(self, data):
+        """Emulate clearError command.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        await self._write_command_to_server("clearErrors", data)
+
+    async def do_selectInclinationSource(self, data):
+        """Command to select source of inclination data.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+        self._assert_state("selectInclinationSource", [salobj.State.DISABLED])
+
+        await self._write_command_to_server(
+            "selectInclinationSource", data, message_details=dict(source=data.source)
+        )
+
+    async def do_setTemperatureOffset(self, data):
+        """Command to set temperature offset for the LUT temperature
+        correction.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+        self._assert_state("setTemperatureOffset", [salobj.State.DISABLED])
+
+        message_details = dict(ring=data.ring, intake=data.intake, exhaust=data.exhaust)
+        await self._write_command_to_server(
+            "setTemperatureOffset", data, message_details=message_details
+        )
+
+    async def do_switchForceBalanceSystem(self, data):
+        """Command to switch force balance system on and off.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+        self.assert_enabled()
+
+        await self._write_command_to_server(
+            "switchForceBalanceSystem", data, message_details=dict(status=data.status)
+        )
 
     def _assert_state(self, command_name, allowed_curr_states):
         """Assert the current summary state is allowed to do the command or
@@ -535,7 +659,7 @@ class M2(salobj.ConfigurableCsc):
         lsst.ts.salobj.ExpectedError
             When the command is failed.
         lsst.ts.salobj.ExpectedError
-            When the command is not acknowledged by the server.
+            When no command acknowledgement for command from server.
         """
 
         # Send the command
@@ -545,7 +669,7 @@ class M2(salobj.ConfigurableCsc):
         )
 
         # Decide the command name of SAL
-        command_name = command_name if command_name is not None else message_name
+        _command_name = command_name if command_name is not None else message_name
 
         # Track the command status
         time_start = time.monotonic()
@@ -560,12 +684,12 @@ class M2(salobj.ConfigurableCsc):
                 return
 
             elif last_command_status == CommandStatus.Fail:
-                raise salobj.ExpectedError(f"{command_name} is failed.")
+                raise salobj.ExpectedError(f"{_command_name} is failed.")
 
             elif (last_command_status == CommandStatus.Ack) and (send_ack is False):
                 send_ack = True
-                # Call self.cmd_{command_name}.ack_in_progress() dynamically
-                getattr(self, f"cmd_{command_name}").ack_in_progress(
+                # Call self.cmd_{_command_name}.ack_in_progress() dynamically
+                getattr(self, f"cmd_{_command_name}").ack_in_progress(
                     data, timeout=self.COMMAND_TIME_OUTOUT_IN_SECOND
                 )
 
@@ -573,141 +697,8 @@ class M2(salobj.ConfigurableCsc):
 
         if send_ack is False:
             raise salobj.ExpectedError(
-                f"{command_name} is not acknowledged by the server."
+                f"No command acknowledgement for {_command_name} from server."
             )
-
-    async def do_start(self, data):
-        self._assert_state("start", salobj.State.STANDBY)
-
-        await self._write_command_to_server("start", data)
-
-    async def do_enable(self, data):
-        self._assert_state("enable", salobj.State.DISABLED)
-
-        await self._write_command_to_server("enable", data)
-
-    async def do_disable(self, data):
-        self._assert_state("disable", salobj.State.ENABLED)
-
-        await self._write_command_to_server("disable", data)
-
-    async def do_standby(self, data):
-        self._assert_state("standby", salobj.State.DISABLED)
-
-        await self._write_command_to_server("standby", data)
-
-    async def do_exitControl(self, data):
-        self._assert_state("exitControl", salobj.State.STANDBY)
-
-        await self._write_command_to_server("exitControl", data)
-
-    async def do_applyForces(self, data):
-        """Apply force.
-
-        Parameters
-        ----------
-        data : `object`
-            Data of the SAL message.
-        """
-        self.assert_enabled()
-
-        message_details = {"axial": data.axial, "tangent": data.tangent}
-        await self._write_command_to_server(
-            "applyForces", data, message_details=message_details
-        )
-
-    async def do_positionMirror(self, data):
-        """Position Mirror.
-
-        Parameters
-        ----------
-        data : `object`
-            Data of the SAL message.
-        """
-        self.assert_enabled()
-
-        message_details = {
-            "x": data.x,
-            "y": data.y,
-            "z": data.z,
-            "xRot": data.xRot,
-            "yRot": data.yRot,
-            "zRot": data.zRot,
-        }
-        await self._write_command_to_server(
-            "positionMirror", data, message_details=message_details
-        )
-
-    async def do_resetForceOffsets(self, data):
-        """Resets user defined forces to zeros.
-
-        Parameters
-        ----------
-        data : `object`
-            Data of the SAL message.
-        """
-        self.assert_enabled()
-
-        await self._write_command_to_server("resetForceOffsets", data)
-
-    async def do_clearErrors(self, data):
-        """Emulate clearError command.
-
-        Parameters
-        ----------
-        data : `object`
-            Data of the SAL message.
-        """
-
-        await self._write_command_to_server("clearErrors", data)
-
-    async def do_selectInclinationSource(self, data):
-        """Command to select source of inclination data.
-
-        Parameters
-        ----------
-        data : `object`
-            Data of the SAL message.
-        """
-        self._assert_state("selectInclinationSource", salobj.State.DISABLED)
-
-        await self._write_command_to_server(
-            "selectInclinationSource", data, message_details={"source": data.source}
-        )
-
-    async def do_setTemperatureOffset(self, data):
-        """Command to set temperature offset for the LUT temperature
-        correction.
-
-        Parameters
-        ----------
-        data : `object`
-            Data of the SAL message.
-        """
-        self._assert_state("setTemperatureOffset", salobj.State.DISABLED)
-
-        message_details = {
-            "ring": data.ring,
-            "intake": data.intake,
-            "exhaust": data.exhaust,
-        }
-        await self._write_command_to_server(
-            "setTemperatureOffset", data, message_details=message_details
-        )
-
-    async def do_switchForceBalanceSystem(self, data):
-        """Command to switch force balance system on and off.
-
-        Parameters
-        ----------
-        data : `object`
-            Data of the SAL message.
-        """
-        self.assert_enabled()
-
-        await self._write_command_to_server(
-            "switchForceBalanceSystem", data, message_details={"status": data.status}
-        )
 
     @staticmethod
     def get_config_pkg():
