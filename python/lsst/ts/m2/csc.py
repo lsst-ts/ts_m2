@@ -40,7 +40,8 @@ class M2(salobj.ConfigurableCsc):
     Parameters
     ----------
     host : `str`, optional
-        IP address of the TCP/IP interface. (the default is "139.229.178.6")
+        IP address of the TCP/IP interface. (the default is "139.229.178.6",
+        which is the IP of M2 server on summit.)
     port_command : `int`, optional
         Command port number of the TCP/IP interface. (the default is 50000)
     port_telemetry : `int`, optional
@@ -657,8 +658,6 @@ class M2(salobj.ConfigurableCsc):
         Raises
         ------
         lsst.ts.salobj.ExpectedError
-            When the command is failed.
-        lsst.ts.salobj.ExpectedError
             When no command acknowledgement for command from server.
         """
 
@@ -672,33 +671,64 @@ class M2(salobj.ConfigurableCsc):
         _command_name = command_name if command_name is not None else message_name
 
         # Track the command status
-        time_start = time.monotonic()
+        send_ack = await self._handle_command_acknowledgement(
+            _command_name, data, self.COMMAND_TIME_OUTOUT_IN_SECOND
+        )
+
+        if send_ack is False:
+            raise salobj.ExpectedError(
+                f"No command acknowledgement for {_command_name} from server."
+            )
+
+    async def _handle_command_acknowledgement(self, command_name, data, timeout):
+        """Handle the command acknowledgement for the controller.
+
+        Parameters
+        ----------
+        command_name : `str`
+            Command name of SAL.
+        data : `object`
+            Data of the SAL message.
+        timeout : `float`
+           Timeout of command acknowledgement in second.
+
+        Returns
+        -------
+        send_ack : `bool`
+            True if send the acknowledgement. Else, False.
+
+        Raises
+        ------
+        lsst.ts.salobj.ExpectedError
+            When the command is failed.
+        """
+
         send_ack = False
-        while time.monotonic() - time_start < self.COMMAND_TIME_OUTOUT_IN_SECOND:
+
+        time_start = time.monotonic()
+        while time.monotonic() - time_start < timeout:
 
             last_command_status = self.model.last_command_status
             if last_command_status == CommandStatus.Success:
                 # Wait one second to let the event and telemetry loops have
                 # the time to publish the messages
                 await asyncio.sleep(1)
-                return
+                send_ack = True
+                break
 
             elif last_command_status == CommandStatus.Fail:
-                raise salobj.ExpectedError(f"{_command_name} is failed.")
+                raise salobj.ExpectedError(f"{command_name} is failed.")
 
             elif (last_command_status == CommandStatus.Ack) and (send_ack is False):
                 send_ack = True
                 # Call self.cmd_{_command_name}.ack_in_progress() dynamically
-                getattr(self, f"cmd_{_command_name}").ack_in_progress(
-                    data, timeout=self.COMMAND_TIME_OUTOUT_IN_SECOND
+                getattr(self, f"cmd_{command_name}").ack_in_progress(
+                    data, timeout=timeout
                 )
 
             await asyncio.sleep(10 * self.timeout_in_second)
 
-        if send_ack is False:
-            raise salobj.ExpectedError(
-                f"No command acknowledgement for {_command_name} from server."
-            )
+        return send_ack
 
     @staticmethod
     def get_config_pkg():
@@ -714,7 +744,8 @@ class M2(salobj.ConfigurableCsc):
             default="139.229.178.6",
             help="""
                  IP address of the TCP/IP interface. The default is
-                 '139.229.178.6'. Do not use this in the simulation mode.
+                 '139.229.178.6', which is the IP of M2 server on summit. Do
+                 not use this in the simulation mode.
                  """,
         )
 
