@@ -1,6 +1,6 @@
 # This file is part of ts_m2.
 #
-# Developed for the LSST Data Management System.
+# Developed for the Vera Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -19,21 +19,32 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# Set __version__ before importing the CSC
-try:
-    from .version import *
-except ImportError:
-    __version__ = "?"
+import logging
+import unittest
+import asyncio
 
-from .config_schema import *
-from .enum import *
-from .utility import *
-from .mock_message_telemetry import *
-from .mock_message_event import *
-from .mock_command import *
-from .mock_model import *
-from .mock_server import *
-from .tcp_client import *
-from .model import *
-from .translator import *
-from .csc import *
+from lsst.ts.m2 import check_queue_size
+
+
+class TestUtility(unittest.IsolatedAsyncioTestCase):
+    """Test the functions in utility."""
+
+    def test_check_queue_size(self):
+
+        # No information is logged
+        queue = asyncio.Queue(maxsize=3)
+        log = logging.getLogger()
+        self.assertFalse(check_queue_size(queue, log))
+
+        queue.put_nowait(1)
+        self.assertFalse(check_queue_size(queue, log))
+
+        # Information is logged
+        queue.put_nowait(2)
+        self.assertTrue(check_queue_size(queue, log))
+
+
+if __name__ == "__main__":
+
+    # Do the unit test
+    unittest.main()

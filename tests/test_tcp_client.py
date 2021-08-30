@@ -106,6 +106,8 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
     async def test_write_cmd(self):
         async with self.make_server() as server, self.make_client(server) as client:
 
+            self.assertEqual(client.last_sequence_id, -1)
+
             msg_name = "move"
             msg_details = {"x": 1, "y": 2, "z": 3}
             await client.write(MsgType.Command, msg_name, msg_details=msg_details)
@@ -117,6 +119,8 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(message["x"], msg_details["x"])
             self.assertEqual(message["y"], msg_details["y"])
             self.assertEqual(message["z"], msg_details["z"])
+
+            self.assertEqual(client.last_sequence_id, 1)
 
     async def _read_msg_in_server(self, server, timeout):
         """Read the received message in server.
@@ -143,7 +147,10 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
                 await client.write(MsgType.Command, msg_name, msg_details=msg_details)
 
                 message = await self._read_msg_in_server(server, READ_TIMEOUT)
-                self.assertEqual(message["sequence_id"], count + 1)
+
+                sequence_id_expected = count + 1
+                self.assertEqual(message["sequence_id"], sequence_id_expected)
+                self.assertEqual(client.last_sequence_id, sequence_id_expected)
 
     async def test_write_cmd_no_details(self):
         async with self.make_server() as server, self.make_client(server) as client:

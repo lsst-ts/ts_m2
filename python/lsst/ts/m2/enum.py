@@ -35,6 +35,7 @@ class CommandStatus(IntEnum):
     Fail = auto()
     Ack = auto()
     NoAck = auto()
+    Unknown = auto()
 
 
 class DetailedState(IntEnum):
