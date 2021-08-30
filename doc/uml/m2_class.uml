@@ -12,4 +12,5 @@ MockCommand ..> MockMessageEvent
 MockCommand --> MockModel
 Model "1" *-- "2" TcpClient
 M2 *-- Model
+M2 *-- Translator
 @enduml

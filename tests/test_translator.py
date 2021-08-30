@@ -1,6 +1,6 @@
 # This file is part of ts_m2.
 #
-# Developed for the LSST Data Management System.
+# Developed for the Vera Rubin Observatory Telescope and Site Systems.
 # This product includes software developed by the LSST Project
 # (https://www.lsst.org).
 # See the COPYRIGHT file at the top-level directory of this distribution
@@ -19,21 +19,30 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# Set __version__ before importing the CSC
-try:
-    from .version import *
-except ImportError:
-    __version__ = "?"
+import unittest
 
-from .config_schema import *
-from .enum import *
-from .utility import *
-from .mock_message_telemetry import *
-from .mock_message_event import *
-from .mock_command import *
-from .mock_model import *
-from .mock_server import *
-from .tcp_client import *
-from .model import *
-from .translator import *
-from .csc import *
+from lsst.ts.m2 import Translator
+
+
+class TestTranslator(unittest.TestCase):
+    def setUp(self):
+        self.translator = Translator()
+
+    def test_translate_with_id(self):
+
+        message_payload = self.translator.translate(dict(id="id"))
+
+        self.assertEqual(message_payload, dict())
+
+    def test_translate_without_id(self):
+
+        message = dict(temp="temp")
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload, message)
+
+
+if __name__ == "__main__":
+
+    # Do the unit test
+    unittest.main()

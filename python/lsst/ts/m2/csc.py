@@ -28,7 +28,7 @@ from lsst.ts import tcpip
 from lsst.ts import salobj
 
 from .config_schema import CONFIG_SCHEMA
-from . import MsgType, Model, MockServer, CommandStatus
+from . import MsgType, Model, MockServer, CommandStatus, Translator
 from . import __version__
 
 __all__ = ["M2"]
@@ -121,6 +121,10 @@ class M2(salobj.ConfigurableCsc):
 
         self.timeout_in_second = timeout_in_second
         self.model = Model(log=self.log, timeout_in_second=self.timeout_in_second)
+
+        # Translator to translate the message from component for the SAL topic
+        # to use
+        self._translator = Translator()
 
         # Mock server that is only needed in the simualtion mode
         self._mock_server = None
@@ -249,73 +253,39 @@ class M2(salobj.ConfigurableCsc):
 
             if not self.model.queue_event.empty():
                 message = self.model.queue_event.get_nowait()
-                await self._publish_events(message)
+
+                # Update the internal attribute: self._summary_state, which
+                # comes from the upstream class: BaseCsc
+                message_name = message["id"]
+                if message_name == "summaryState":
+                    self._summary_state = salobj.State(message["summaryState"])
+
+                self._publish_message_by_sal("evt_", message)
 
             else:
                 await asyncio.sleep(self.timeout_in_second)
 
         self.log.debug("Stop the running of event loop from component.")
 
-    async def _publish_events(self, message):
-        """Publish the events from component.
+    def _publish_message_by_sal(self, prefix_sal_topic, message):
+        """Publish the message from component by SAL.
 
         Parameters
         ----------
+        prefix_sal_topic : `str`
+            Prefix of the SAL topic.
         message : `dict`
             Message from the component.
         """
 
-        # Fill in the SAL event here. It is noted that the JSON packet will
-        # be different when communicate with M2 cell compared withe M2 server
-
         message_name = message["id"]
+        sal_topic_name = prefix_sal_topic + message_name
 
-        if message_name == "summaryState":
-            # Update the internal attribute: self._summary_state, which comes
-            # from the upstream class: BaseCsc
-            self._summary_state = salobj.State(message["summaryState"])
-
-            self.evt_summaryState.set_put(summaryState=message["summaryState"])
-
-        elif message_name == "errorCode":
-            self.evt_errorCode.set_put(errorCode=message["errorCode"])
-
-        elif message_name == "m2AssemblyInPosition":
-            self.evt_m2AssemblyInPosition.set_put(inPosition=message["inPosition"])
-
-        elif message_name == "cellTemperatureHiWarning":
-            self.evt_cellTemperatureHiWarning.set_put(hiWarning=message["hiWarning"])
-
-        elif message_name == "detailedState":
-            self.evt_detailedState.set_put(detailedState=message["detailedState"])
-
-        elif message_name == "commandableByDDS":
-            self.evt_commandableByDDS.set_put(state=message["state"])
-
-        elif message_name == "interlock":
-            self.evt_interlock.set_put(state=message["state"])
-
-        elif message_name == "tcpIpConnected":
-            self.evt_tcpIpConnected.set_put(isConnected=message["isConnected"])
-
-        elif message_name == "hardpointList":
-            self.evt_hardpointList.set_put(actuators=message["actuators"])
-
-        elif message_name == "forceBalanceSystemStatus":
-            self.evt_forceBalanceSystemStatus.set_put(status=message["status"])
-
-        elif message_name == "inclinationTelemetrySource":
-            self.evt_inclinationTelemetrySource.set_put(source=message["source"])
-
-        elif message_name == "temperatureOffset":
-            self.evt_temperatureOffset.set_put(
-                ring=message["ring"],
-                intake=message["intake"],
-                exhaust=message["exhaust"],
-            )
-
+        if hasattr(self, sal_topic_name):
+            message_payload = self._translator.translate(message)
+            getattr(self, sal_topic_name).set_put(**message_payload)
         else:
-            self.log.info(f"Receive the unexpected event: {message}")
+            self.log.warning(f"Unspecified message: {message_name}, ignoring...")
 
     async def _telemetry_loop(self):
         """Update and output telemetry information from component."""
@@ -326,133 +296,12 @@ class M2(salobj.ConfigurableCsc):
 
             if not self.model.client_telemetry.queue.empty():
                 message = self.model.client_telemetry.queue.get_nowait()
-                await self._publish_telemetry(message)
+                self._publish_message_by_sal("tel_", message)
 
             else:
                 await asyncio.sleep(self.timeout_in_second)
 
         self.log.debug("Telemetry loop from component closed.")
-
-    async def _publish_telemetry(self, message):
-        """Publish the telemetry from component.
-
-        Parameters
-        ----------
-        message : `dict`
-            Message from the component.
-        """
-
-        # Fill in the SAL telemetry here. It is noted that the JSON packet will
-        # be different when communicate with M2 cell compared withe M2 server
-
-        message_name = message["id"]
-
-        if message_name == "position":
-            self.tel_position.set_put(
-                x=message["x"],
-                y=message["y"],
-                z=message["z"],
-                xRot=message["xRot"],
-                yRot=message["yRot"],
-                zRot=message["zRot"],
-            )
-
-        elif message_name == "positionIMS":
-            self.tel_positionIMS.set_put(
-                x=message["x"],
-                y=message["y"],
-                z=message["z"],
-                xRot=message["xRot"],
-                yRot=message["yRot"],
-                zRot=message["zRot"],
-            )
-
-        elif message_name == "axialForce":
-            self.tel_axialForce.set_put(
-                lutGravity=message["lutGravity"],
-                lutTemperature=message["lutTemperature"],
-                applied=message["applied"],
-                measured=message["measured"],
-                hardpointCorrection=message["hardpointCorrection"],
-            )
-
-        elif message_name == "tangentForce":
-            self.tel_tangentForce.set_put(
-                lutGravity=message["lutGravity"],
-                lutTemperature=message["lutTemperature"],
-                applied=message["applied"],
-                measured=message["measured"],
-                hardpointCorrection=message["hardpointCorrection"],
-            )
-
-        elif message_name == "temperature":
-            self.tel_temperature.set_put(
-                ring=message["ring"],
-                intake=message["intake"],
-                exhaust=message["exhaust"],
-            )
-
-        elif message_name == "zenithAngle":
-            self.tel_zenithAngle.set_put(
-                measured=message["measured"],
-                inclinometerRaw=message["inclinometerRaw"],
-                inclinometerProcessed=message["inclinometerProcessed"],
-            )
-
-        elif message_name == "axialActuatorSteps":
-            self.tel_axialActuatorSteps.set_put(steps=message["steps"])
-
-        elif message_name == "tangentActuatorSteps":
-            self.tel_tangentActuatorSteps.set_put(steps=message["steps"])
-
-        elif message_name == "axialEncoderPositions":
-            self.tel_axialEncoderPositions.set_put(position=message["position"])
-
-        elif message_name == "tangentEncoderPositions":
-            self.tel_tangentEncoderPositions.set_put(position=message["position"])
-
-        elif message_name == "ilcData":
-            self.tel_ilcData.set_put(status=message["status"])
-
-        elif message_name == "displacementSensors":
-            self.tel_displacementSensors.set_put(
-                thetaZ=message["thetaZ"], deltaZ=message["deltaZ"]
-            )
-
-        elif message_name == "forceBalance":
-            self.tel_forceBalance.set_put(
-                fx=message["fx"],
-                fy=message["fy"],
-                fz=message["fz"],
-                mx=message["mx"],
-                my=message["my"],
-                mz=message["mz"],
-            )
-
-        elif message_name == "netForcesTotal":
-            self.tel_netForcesTotal.set_put(
-                fx=message["fx"],
-                fy=message["fy"],
-                fz=message["fz"],
-            )
-
-        elif message_name == "netMomentsTotal":
-            self.tel_netMomentsTotal.set_put(
-                mx=message["mx"],
-                my=message["my"],
-                mz=message["mz"],
-            )
-
-        elif message_name == "powerStatus":
-            self.tel_powerStatus.set_put(
-                motorVoltage=message["motorVoltage"],
-                motorCurrent=message["motorCurrent"],
-                commVoltage=message["commVoltage"],
-                commCurrent=message["commCurrent"],
-            )
-
-        else:
-            self.log.info(f"Receive the unexpected telemetry: {message}")
 
     async def connect_server(self):
         """Connect the TCP/IP server."""
