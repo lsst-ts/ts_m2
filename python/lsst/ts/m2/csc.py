@@ -470,9 +470,6 @@ class M2(salobj.ConfigurableCsc):
 
         self.model.start(host, port_command, port_telemetry)
 
-        # Wait a little time to construct the connection
-        await asyncio.sleep(2)
-
     async def do_enterControl(self, data):
         """Go from OFFLINE state, Available offline substate to STANDBY.
 

@@ -85,6 +85,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=0
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             self.assertIsNone(self.csc._mock_server)
             self.assertFalse(self.csc.model.are_clients_connected())
@@ -93,6 +95,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             # Simulate the MTMount CSC
             elevation_angle = 10
@@ -181,6 +185,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             with self.assertRaises(salobj.AckError):
                 await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
@@ -189,6 +195,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             await self.assert_next_summary_state(
                 salobj.State.OFFLINE, timeout=STD_TIMEOUT
@@ -209,6 +217,9 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         ):
             # BaseCscTestCase.check_standard_state_transitions() can not be
             # used here because I need to test the enterControl() as well.
+
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             await self.assert_next_summary_state(
                 salobj.State.OFFLINE, timeout=STD_TIMEOUT
@@ -248,6 +259,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             self.assertEqual(self.csc.summary_state, salobj.State.OFFLINE)
 
@@ -259,6 +272,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
@@ -272,6 +287,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
@@ -420,6 +437,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
@@ -499,6 +518,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
@@ -557,6 +578,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
@@ -633,6 +656,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             self.assertEqual(self.csc.summary_state, salobj.State.OFFLINE)
 
@@ -665,6 +690,8 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         async with self.make_csc(
             initial_state=salobj.State.OFFLINE, config_dir=None, simulation_mode=1
         ):
+            # Wait a little time to construct the connection
+            await asyncio.sleep(2)
 
             await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
 
