@@ -40,8 +40,8 @@ class M2(salobj.ConfigurableCsc):
     Parameters
     ----------
     host : `str`, optional
-        IP address of the TCP/IP interface. (the default is "139.229.178.6",
-        which is the IP of M2 server on summit.)
+        IP address of the TCP/IP interface. (the default is
+        "m2-control.cp.lsst.org", which is the IP of M2 server on summit.)
     port_command : `int`, optional
         Command port number of the TCP/IP interface. (the default is 50000)
     port_telemetry : `int`, optional
@@ -86,7 +86,7 @@ class M2(salobj.ConfigurableCsc):
 
     def __init__(
         self,
-        host="139.229.178.6",
+        host="m2-control.cp.lsst.org",
         port_command=50000,
         port_telemetry=50001,
         timeout_in_second=0.05,
@@ -741,11 +741,11 @@ class M2(salobj.ConfigurableCsc):
         parser.add_argument(
             "--host",
             type=str,
-            default="139.229.178.6",
+            default="m2-control.cp.lsst.org",
             help="""
                  IP address of the TCP/IP interface. The default is
-                 '139.229.178.6', which is the IP of M2 server on summit. Do
-                 not use this in the simulation mode.
+                 'm2-control.cp.lsst.org', which is the IP of M2 server on
+                 summit. Do not use this in the simulation mode.
                  """,
         )
 
