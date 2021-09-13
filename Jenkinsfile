@@ -19,6 +19,12 @@ pipeline {
         image_tag = "develop"
         user_ci = credentials('lsst-io')
         work_branches = "${CHANGE_BRANCH} ${GIT_BRANCH} develop"
+        // PlantUML url
+        PLANTUML_URL = "https://managedway.dl.sourceforge.net/project/plantuml/plantuml.jar"
+        // Authority to publish the document online
+        LTD_USERNAME = "${user_ci_USR}"
+        LTD_PASSWORD = "${user_ci_PSW}"
+        DOCUMENT_NAME = "ts-m2"
     }
 
     stages {
@@ -50,6 +56,15 @@ pipeline {
                 script {
                     sh """
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd repo && eups declare -r . -t saluser && setup ts_m2 -t saluser && pytest -v\"
+                    """
+                }
+            }
+        }
+        stage("Build and Upload Documentation") {
+            steps {
+                withEnv(["HOME=${env.WORKSPACE}"]) {
+                    sh """
+                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && curl -O ${PLANTUML_URL} && pip install sphinxcontrib-plantuml && cd repo && eups declare -r . -t saluser && setup ts_m2 -t saluser && package-docs build && ltd upload --product ${DOCUMENT_NAME} --git-ref ${GIT_BRANCH} --dir doc/_build/html\"
                     """
                 }
             }
