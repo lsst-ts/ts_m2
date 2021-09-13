@@ -1,82 +1,93 @@
-.. py:currentmodule:: lsst.ts.m2
+.. |CSC_developer| replace:: *Tiago Ribeiro <tribeiro@lsst.org>* and *Te-Wei Tsai <ttsai@lsst.org>*
+.. |CSC_product_owner| replace:: *Sandrine Thomas <sthomas@lsst.org>*
 
-.. _lsst.ts.m2:
+.. Note that the ts_ prefix is omitted from the title
 
-##########
-lsst.ts.m2
-##########
+########################
+M2
+########################
 
-.. Paragraph that describes what this Python module does and links to related modules and frameworks.
+.. image:: https://img.shields.io/badge/GitHub-ts__m2-green.svg
+    :target: https://github.com/lsst-ts/ts_m2
+.. image:: https://img.shields.io/badge/Jenkins-ts__m2-green.svg
+    :target: https://tssw-ci.lsst.org/job/LSST_Telescope-and-Site/job/ts_m2
+.. image:: https://img.shields.io/badge/Jira-ts__m2-green.svg
+    :target: https://jira.lsstcorp.org/issues/?jql=labels%20in%20(ts_m2%2C%20%20M2)
+.. image:: https://img.shields.io/badge/ts__xml-MTM2-green.svg
+    :target: https://ts-xml.lsst.io/sal_interfaces/MTM2.html
 
-.. .. _lsst.ts.m2-using:
+.. _Overview:
 
-.. Using lsst.ts.m2
-.. ================
+Overview
+========
 
-.. toctree linking to topics related to using the module's APIs.
+The Main Telescope M2 Commandable SAL Component (CSC) is operating the M2 mirror control system.
+M2 calculates the actuator steps (or forces) in the closed-loop control to compensate the affections from gravity and temperature based on the look-up table (LUT), loading cell of force, temeperature sensor, and inclinometer.
+In addition to use the internal inclinometer, it can subscribe the elevation angle from the Main Telescope Mount (MTMount) CSC instead.
+It can accept the force command from the Main Telescope Active Optics System (MTAOS) CSC to change the bending modes to reach the high image quality.
+DDS/SAL (Service Abstraction Layer) is used to send or receive commands/events/telemetry among telescope's subsystems.
 
-.. .. toctree::
-..    :maxdepth: 1
+In automatic operation, M2 will be controlled by the Telescope Control System (TCS) and MTAOS to do the closed-loop correction and adjust the bending modes.
+M2 is part of the `Main Telescope Control Packages <https://obs-controls.lsst.io/System-Architecture/Control-Packages/index.html>`_.
+The backbone of CSC is using the `ts_salobj <https://ts-salobj.lsst.io>`_ library, which defines the state transitions.
+The summary state machine is defined in `TCS Software Component Interface <https://docushare.lsst.org/docushare/dsweb/Get/LTS-307>`_.
+The `eups <https://github.com/RobertLuptonTheGood/eups>`_ is used as the package manager.
+This package also supports the `conda <https://docs.conda.io/en/latest>`_ package manager.
 
-.. _lsst.ts.m2-contributing:
+The badges above navigate to the GitHub repository for the CSC code, Jenkins CI jobs, Jira issues, and communication interface for the software.
 
-Contributing
-============
+.. _User_Documentation:
 
-``lsst.ts.m2`` is developed at https://github.com/lsst-ts/ts_m2.
-You can find Jira issues for this module under the `ts_m2 <https://jira.lsstcorp.org/issues/?jql=project%20%3D%20DM%20AND%20component%20%3D%20ts_m2>`_ component.
+User Documentation
+==================
 
-.. If there are topics related to developing this module (rather than using it), link to this from a toctree placed here.
+Observatory operators and other interested parties should consult the user guide for insights into M2 operations.
 
-.. .. toctree::
-..    :maxdepth: 1
+.. toctree::
+    user-guide/user-guide
+    :maxdepth: 1
 
-.. _lsst.ts.m2-command-line-taskref:
+.. _Configuration:
 
-Task reference
-==============
+Configuring the M2
+=====================
 
-.. _lsst.ts.m2-command-line-tasks:
+M2's configuration is described at the following link.
 
-Command-line tasks
-------------------
+.. toctree::
+    configuration/configuration
+    :maxdepth: 1
 
-.. lsst-cmdlinetasks::
-   :root: lsst.ts.m2
+.. _Development_Documentation:
 
-.. _lsst.ts.m2-tasks:
+Development Documentation
+=========================
 
-Tasks
------
+Classes and their methods, and how to get involved in the M2 development is described in this section.
 
-.. lsst-tasks::
-   :root: lsst.ts.m2
-   :toctree: tasks
+.. toctree::
+    developer-guide/developer-guide
+    :maxdepth: 1
 
-.. _lsst.ts.m2-configs:
+.. _Version_History:
 
-Configurations
---------------
+Version History
+===============
 
-.. lsst-configs::
-   :root: lsst.ts.m2
-   :toctree: configs
+The version history is at the following link.
 
-.. .. _lsst.ts.m2-scripts:
+.. toctree::
+    version_history
+    :maxdepth: 1
 
-.. Script reference
-.. ================
+The released version is `here <https://github.com/lsst-ts/ts_m2/releases>`_.
 
-.. .. TODO: Add an item to this toctree for each script reference topic in the scripts subdirectory.
+.. _Contact_Personnel:
 
-.. .. toctree::
-..    :maxdepth: 1
+Contact Personnel
+=================
 
-.. .. _lsst.ts.m2-pyapi:
+For questions not covered in the documentation, emails should be addressed to the developers: |CSC_developer|.
+The product owner is |CSC_product_owner|.
 
-Python API reference
-====================
-
-.. automodapi:: lsst.ts.m2
-   :no-main-docstr:
-   :no-inheritance-diagram:
+This page was last modified |today|.
