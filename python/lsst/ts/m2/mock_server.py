@@ -26,6 +26,7 @@ import asyncio
 
 from lsst.ts import salobj
 from lsst.ts import tcpip
+from lsst.ts.utils import make_done_future
 
 from . import (
     MockModel,
@@ -123,8 +124,8 @@ class MockServer:
         self.timeout_in_second = timeout_in_second
 
         # Following two attributes have the type of asyncio.Future
-        self._monitor_loop_task_command = salobj.make_done_future()
-        self._monitor_loop_task_telemetry = salobj.make_done_future()
+        self._monitor_loop_task_command = make_done_future()
+        self._monitor_loop_task_telemetry = make_done_future()
 
         # This is used to send the initial messages when the connection is just
         # on. Check the self._send_welcome_message() for the details.
@@ -169,7 +170,7 @@ class MockServer:
             )
 
     async def _monitor_message_command(self):
-        """Monitor the message of incoming command."""
+        """Monitor the message from command server."""
 
         try:
             while self.server_command.connected:
@@ -239,7 +240,7 @@ class MockServer:
         await self._message_event.write_summary_state(salobj.State.OFFLINE)
 
     async def _process_message_command(self):
-        """Process the incoming message of command."""
+        """Process the incoming message from command server."""
 
         try:
             msg_input = await asyncio.wait_for(
@@ -263,6 +264,10 @@ class MockServer:
 
                 # Command result
                 await self._reply_command(sequence_id, command_status)
+
+            # Process the event
+            if self._is_event(name):
+                self._get_event_data(msg)
 
         except asyncio.TimeoutError:
             await asyncio.sleep(self.timeout_in_second)
@@ -365,6 +370,38 @@ class MockServer:
             "sequence_id": sequence_id,
         }
         await write_json_packet(self.server_command.writer, msg_command_status)
+
+    def _is_event(self, message_name):
+        """Is the event or not.
+
+        Parameters
+        ----------
+        message_name : `str`
+            Message name in the header.
+
+        Returns
+        -------
+        `bool`
+            True if this is a event.
+        """
+
+        return message_name.startswith("evt_")
+
+    def _get_event_data(self, message):
+        """Get the event data.
+
+        Parameters
+        ----------
+        message : `dict`
+            Event message.
+        """
+
+        # In the real M2 LabVIEW code, we will compare the string with the
+        # lower case
+        name = message["id"].lower()
+        component = message["compName"].lower()
+        if name == "evt_mountinposition" and component == "mtmount":
+            self.model.mtmount_in_position = message["inPosition"]
 
     def _connect_state_changed_callback_telemetry(self, server_telemetry):
         """Called when the telemetry server connection state changes.

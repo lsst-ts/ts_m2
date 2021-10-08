@@ -81,6 +81,8 @@ class MockModel:
         Look-up table (LUT).
     error_cleared : `bool`
         Error is cleared or not.
+    mtmount_in_position : `bool`
+        MTMount in position or not.
     """
 
     def __init__(self, log=None, telemetry_interval=0.05):
@@ -149,6 +151,8 @@ class MockModel:
         self.lut = dict()
 
         self.error_cleared = True
+
+        self.mtmount_in_position = False
 
     def _get_default_temperatures(
         self, temperature_init=11.0, temperature_ref=21.0, max_difference=2.0
