@@ -11,6 +11,8 @@ v0.4.0
 * Move ``bin.src/run_mtm2.py`` to ``bin/run_mtm2.py``.
 * Reformat the **rst** documents to follow the standard.
 * Publish the document to `M2 document <https://ts-m2.lsst.io>`_.
+* Depends on **ts_utils**.
+* Subscribe the **MTMount** elevationInPosition event.
 
 v0.3.6
 ------
