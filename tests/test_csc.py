@@ -57,6 +57,7 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         await self.csc_mtmount.start_task
 
         self.csc_mtmount.tel_elevation.set_put(actualPosition=elevation_angle)
+        self.csc_mtmount.evt_elevationInPosition.set_put(inPosition=True)
 
         # Wait for some time to publish the telemetry of MTMount
         await asyncio.sleep(2)
@@ -109,6 +110,9 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
             # Check the update of zenith angle from MTMount CSC
             mock_model = self.csc._mock_server.model
             self.assertEqual(mock_model.zenith_angle, 90 - elevation_angle)
+
+            # Check the update of mount is in position or not from MTMount CSC
+            self.assertEqual(mock_model.mtmount_in_position, True)
 
             # Check the welcome messages
             data_tcpIp = await self.remote.evt_tcpIpConnected.next(

@@ -26,6 +26,7 @@ import time
 
 from lsst.ts import tcpip
 from lsst.ts import salobj
+from lsst.ts.utils import make_done_future
 
 from .config_schema import CONFIG_SCHEMA
 from . import MsgType, Model, MockServer, CommandStatus, Translator
@@ -137,14 +138,19 @@ class M2(salobj.ConfigurableCsc):
         self._run_loops = False
 
         # Task of the telemetry loop from component (asyncio.Future)
-        self._task_telemetry_loop = salobj.make_done_future()
+        self._task_telemetry_loop = make_done_future()
 
         # Task of the event loop from component (asyncio.Future)
-        self._task_event_loop = salobj.make_done_future()
+        self._task_event_loop = make_done_future()
 
         # Remote to listen to MTMount position
-        self.mtmount = salobj.Remote(self.domain, "MTMount", include=["elevation"])
+        self.mtmount = salobj.Remote(
+            self.domain, "MTMount", include=["elevation", "elevationInPosition"]
+        )
         self.mtmount.tel_elevation.callback = self.set_mount_elevation_callback
+        self.mtmount.evt_elevationInPosition.callback = (
+            self.set_mount_elevation_in_position_callback
+        )
 
     async def set_mount_elevation_callback(self, data):
         """Callback function to set the mount elevation.
@@ -159,6 +165,22 @@ class M2(salobj.ConfigurableCsc):
             MsgType.Telemetry,
             "elevation",
             msg_details=dict(actualPosition=data.actualPosition),
+            comp_name="MTMount",
+        )
+
+    async def set_mount_elevation_in_position_callback(self, data):
+        """Callback function to notify the mount elevation in position.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        await self.model.client_command.write(
+            MsgType.Event,
+            "mountInPosition",
+            msg_details=dict(inPosition=data.inPosition),
             comp_name="MTMount",
         )
 

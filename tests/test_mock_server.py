@@ -625,6 +625,23 @@ class TestMockServer(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(abs(msg_power_status["motorVoltage"]), 20)
             self.assertGreater(abs(msg_power_status["motorCurrent"]), 5)
 
+    async def test_event_get_mtmount_mount_in_position(self):
+        async with self.make_server() as server, self.make_clients(server) as (
+            client_cmd,
+            client_tel,
+        ):
+            inPosition = True
+            await client_cmd.write(
+                MsgType.Event,
+                "mountInPosition",
+                msg_details={"inPosition": inPosition},
+                comp_name="MTMount",
+            )
+
+            await asyncio.sleep(0.5)
+
+            self.assertEqual(server.model.mtmount_in_position, inPosition)
+
 
 if __name__ == "__main__":
 

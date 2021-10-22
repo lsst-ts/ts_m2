@@ -22,7 +22,7 @@
 import asyncio
 import logging
 
-from lsst.ts import salobj
+from lsst.ts.utils import make_done_future
 
 from . import TcpClient, CommandStatus, check_queue_size
 
@@ -81,10 +81,10 @@ class Model:
         self._start_connection = False
 
         # Task to do the connection (asyncio.Future)
-        self._task_connection = salobj.make_done_future()
+        self._task_connection = make_done_future()
 
         # Task to analyze the message from server (asyncio.Future)
-        self._task_analyze_message = salobj.make_done_future()
+        self._task_analyze_message = make_done_future()
 
     def start(self, host, port_command, port_telemetry):
         """Start the task and connection.

@@ -26,6 +26,7 @@ import copy
 
 from lsst.ts import salobj
 from lsst.ts import tcpip
+from lsst.ts.utils import make_done_future
 
 from . import MsgType, write_json_packet, check_queue_size
 
@@ -95,7 +96,7 @@ class TcpClient:
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))
 
         # Monitor loop task (asyncio.Future)
-        self._monitor_loop_task = salobj.make_done_future()
+        self._monitor_loop_task = make_done_future()
 
     async def connect(self, connect_retry_interval=1.0):
         """Connect to the server.
