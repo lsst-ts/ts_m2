@@ -124,13 +124,15 @@ class MockModel:
                 (item, np.zeros(self.n_tangent_actuators))
                 for item in (
                     "lutGravity",
-                    "lutTemperature",
                     "applied",
                     "measured",
                     "hardpointCorrection",
                 )
             ]
         )
+        # No LUT temperature correction for tangent links
+        self.tangent_forces["lutTemperature"] = np.array([])
+
         self.force_balance = dict(
             [(axis, 0) for axis in ("fx", "fy", "fz", "mx", "my", "mz")]
         )
@@ -422,7 +424,6 @@ class MockModel:
         demanded_tanget_force = np.array(
             (apply if apply is not None else self.tangent_forces["applied"])
             + self.tangent_forces["lutGravity"]
-            + self.tangent_forces["lutTemperature"]
             + self.tangent_forces["hardpointCorrection"]
         )
 

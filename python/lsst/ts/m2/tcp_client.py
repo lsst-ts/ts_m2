@@ -98,7 +98,7 @@ class TcpClient:
         # Monitor loop task (asyncio.Future)
         self._monitor_loop_task = make_done_future()
 
-    async def connect(self, connect_retry_interval=1.0):
+    async def connect(self, connect_retry_interval=1.0, timeout=10.0):
         """Connect to the server.
 
         Parameters
@@ -106,14 +106,20 @@ class TcpClient:
         connect_retry_interval : `float`, optional
             How long to wait before trying to reconnect when connection fails.
             (default is 1.0)
+        timeout : `float`, optional
+            Timeout in second. This value should be larger than the
+            connect_retry_interval. (default is 10.0)
 
-        Notes
-        -----
-        This will wait forever for a connection.
+        Raises
+        ------
+        asyncio.TimeoutError
+            Connection timeout.
         """
 
-        self.log.info("Open the connection.")
+        self.log.info("Try to open the connection.")
 
+        retry_times_max = timeout // connect_retry_interval
+        retry_times = 0
         while not self.is_connected():
 
             try:
@@ -123,6 +129,10 @@ class TcpClient:
 
             except ConnectionRefusedError:
                 await asyncio.sleep(connect_retry_interval)
+
+                retry_times += 1
+                if retry_times >= retry_times_max:
+                    raise asyncio.TimeoutError("Connection timeout.")
 
         self.log.info("Connection is on.")
 

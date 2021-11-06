@@ -187,7 +187,12 @@ class MockServer:
 
                 if not self.model.error_cleared:
                     await self._message_event.write_summary_state(salobj.State.FAULT)
+
+                    # Write the message of error code 0 to simulate the M2
+                    # LabVIEW code
+                    await self._message_event.write_error_code(0)
                     await self._message_event.write_error_code(self.FAKE_ERROR_CODE)
+
                     await self._message_event.write_force_balance_system_status(
                         self.model.force_balance_system_status
                     )
