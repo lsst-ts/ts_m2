@@ -20,7 +20,7 @@ pipeline {
         user_ci = credentials('lsst-io')
         work_branches = "${CHANGE_BRANCH} ${GIT_BRANCH} develop"
         // PlantUML url
-        PLANTUML_URL = "https://managedway.dl.sourceforge.net/project/plantuml/plantuml.jar"
+        PLANTUML_URL = "https://github.com/plantuml/plantuml/releases/download/v1.2021.13/plantuml-1.2021.13.jar"
         // Authority to publish the document online
         LTD_USERNAME = "${user_ci_USR}"
         LTD_PASSWORD = "${user_ci_PSW}"
@@ -46,6 +46,8 @@ pipeline {
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_config_mttcs && /home/saluser/.checkout_repo.sh \${work_branches}\"
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_xml && /home/saluser/.checkout_repo.sh \${work_branches}\"
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_idl && /home/saluser/.checkout_repo.sh \${work_branches}\"
+                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_sal && git reset --hard ab4b50c\"
+                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_xml && git reset --hard b93c844\"
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && source ~/.bashrc && make_idl_files.py MTM2 MTMount\"
                     """
                 }
@@ -64,7 +66,7 @@ pipeline {
             steps {
                 withEnv(["HOME=${env.WORKSPACE}"]) {
                     sh """
-                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && curl -O ${PLANTUML_URL} && pip install sphinxcontrib-plantuml && cd repo && eups declare -r . -t saluser && setup ts_m2 -t saluser && package-docs build && ltd upload --product ${DOCUMENT_NAME} --git-ref ${GIT_BRANCH} --dir doc/_build/html\"
+                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && curl -L ${PLANTUML_URL} -o plantuml.jar && pip install sphinxcontrib-plantuml && cd repo && eups declare -r . -t saluser && setup ts_m2 -t saluser && package-docs build && ltd upload --product ${DOCUMENT_NAME} --git-ref ${GIT_BRANCH} --dir doc/_build/html\"
                     """
                 }
             }
