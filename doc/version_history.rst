@@ -13,6 +13,15 @@ v0.4.0
 * Publish the document to `M2 document <https://ts-m2.lsst.io>`_.
 * Depends on **ts_utils**.
 * Subscribe the **MTMount** elevationInPosition event.
+* Replace the **LSST_DDS_DOMAIN** with **LSST_DDS_PARTITION_PREFIX** in ``conda/meta.yaml``.
+* Ignore the error code 0.
+* Handle the special case that the **tangentForce** telemetry has no correction of LUT temeperature (empty list is used).
+* Add the attribute of **controller_state** to **Model** class.
+* Decouple the CSC summary state machine and controller's state machine.
+* Update the ``user-guide.rst`` for the clear of error.
+* Update the ``developer-guide.rst`` for the decoupling of state machines.
+* Update the url of **PLANTUML_URL** in ``Jenkinsfile``.
+* Fix the versions of **ts_xml** and **ts_sal** because of the incompatible version of **ts_xml** (commit: f6087af) right now.
 
 v0.3.6
 ------

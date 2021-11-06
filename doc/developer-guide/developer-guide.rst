@@ -46,7 +46,8 @@ It will be upgraded to communiate with the M2 cell control system (`ts_mtm2_cell
 There are two state machines defined in the M2 EUI.
 One is used in the manual local mode and the other one is used in the remote control.
 For the latter, the original developer in vendor used the LSST state machine defined in LTS-307, TCS Software Component Interface.
-Therefore, to simplify the implementation, the state machine in *M2* CSC is designed to follow this directly instead of using the state machine in *ts_salobj*.
+Therefore, to simplify the implementation, the state machine in *M2* CSC is designed to decouple the controller's state machine with the state machine in *ts_salobj*.
+The detail can follow :ref:`State_Machine`.
 
 .. _JSON_String:
 
