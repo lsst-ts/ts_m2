@@ -28,18 +28,22 @@ class TestTranslator(unittest.TestCase):
     def setUp(self):
         self.translator = Translator()
 
-    def test_translate_with_id(self):
+    def test_handle_tangent_force(self):
 
-        message_payload = self.translator.translate(dict(id="id"))
+        message = dict(id="tangentForce", lutTemperature=[])
 
-        self.assertEqual(message_payload, dict())
-
-    def test_translate_without_id(self):
-
-        message = dict(temp="temp")
         message_payload = self.translator.translate(message)
 
-        self.assertEqual(message_payload, message)
+        self.assertEqual(message_payload["lutTemperature"], [0] * 6)
+
+    def test_handle_summary_state(self):
+
+        message = dict(id="summaryState", summaryState=3)
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload["id"], "controllerState")
+        self.assertEqual(message_payload["controllerState"], 3)
 
 
 if __name__ == "__main__":

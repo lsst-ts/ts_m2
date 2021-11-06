@@ -79,6 +79,12 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_connect_timeout(self):
+        client = TcpClient(self.host, 8888)
+
+        with self.assertRaises(asyncio.TimeoutError):
+            await client.connect(timeout=3.0)
+
     async def test_close(self):
         client = TcpClient(tcpip.LOCAL_HOST, 0)
         await client.close()
@@ -95,6 +101,26 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.1)
 
             self.assertFalse(client.is_connected())
+
+    async def test_connect_multiple_times(self):
+
+        async with self.make_server() as server, self.make_client(server) as client:
+
+            self.assertTrue(client.is_connected())
+            self.assertTrue(server.connected)
+
+            # Need to add a small time to close the client's connection totally
+            await client.close()
+            await asyncio.sleep(0.1)
+
+            self.assertFalse(client.is_connected())
+            self.assertFalse(server.connected)
+
+            # Try to re-connect to server
+            await client.connect()
+
+            self.assertTrue(client.is_connected())
+            self.assertTrue(server.connected)
 
     async def test_write_no_connection(self):
 
