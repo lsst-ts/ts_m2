@@ -113,6 +113,9 @@ class M2(salobj.ConfigurableCsc):
         # IP address of the TCP/IP interface
         self._host = host
 
+        # Sequence generator
+        self._sequence_generator = salobj.index_generator()
+
         # Command port number of the TCP/IP interface
         self._port_command = port_command
 
@@ -369,7 +372,13 @@ class M2(salobj.ConfigurableCsc):
             port_command = self._mock_server.server_command.port
             port_telemetry = self._mock_server.server_telemetry.port
 
-        self.model.start(host, port_command, port_telemetry, timeout=timeout)
+        self.model.start(
+            host,
+            port_command,
+            port_telemetry,
+            sequence_generator=self._sequence_generator,
+            timeout=timeout,
+        )
 
         time_start = time.monotonic()
         while not self.model.are_clients_connected() and (

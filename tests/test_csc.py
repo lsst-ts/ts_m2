@@ -349,6 +349,9 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
             self.assertTrue(self.csc.model.are_clients_connected())
             self.assertTrue(self.csc._mock_server.are_servers_connected())
 
+            # Check the last sequence ID
+            self.assertEqual(self.csc.model.client_command.last_sequence_id, 3)
+
             # Enter the Standby state to close the connection
             await salobj.set_summary_state(self.remote, salobj.State.STANDBY)
             self.assertFalse(self.csc.model.are_clients_connected())
@@ -361,6 +364,10 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
             self.assertTrue(self.csc.model.are_clients_connected())
             self.assertTrue(self.csc._mock_server.are_servers_connected())
+
+            # Check the last sequence ID. Note the value should be 9 instead of
+            # 3 from the previous connection.
+            self.assertEqual(self.csc.model.client_command.last_sequence_id, 9)
 
     async def test_telemetry_loop(self):
         async with self.make_csc(

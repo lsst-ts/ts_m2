@@ -47,6 +47,8 @@ class TcpClient:
     log : `logging.Logger` or None, optional
         A logger. If None, a logger will be instantiated. (the default is
         None)
+    sequence_generator : `generator` or `None`, optional
+        Sequence generator. (the default is None)
     maxsize_queue : `int`, optional
         Maximum size of queue. (the default is 1000)
 
@@ -71,7 +73,13 @@ class TcpClient:
     """
 
     def __init__(
-        self, host, port, timeout_in_second=0.05, log=None, maxsize_queue=1000
+        self,
+        host,
+        port,
+        timeout_in_second=0.05,
+        log=None,
+        sequence_generator=None,
+        maxsize_queue=1000,
     ):
 
         # Connection information
@@ -90,7 +98,10 @@ class TcpClient:
         self.timeout_in_second = timeout_in_second
 
         # Sequence ID generator
-        self._sequence_id_generator = salobj.index_generator()
+        if sequence_generator is None:
+            self._sequence_id_generator = salobj.index_generator()
+        else:
+            self._sequence_id_generator = sequence_generator
         self.last_sequence_id = -1
 
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))

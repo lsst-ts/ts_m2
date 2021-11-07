@@ -92,7 +92,9 @@ class Model:
         # Task to analyze the message from server (asyncio.Future)
         self._task_analyze_message = make_done_future()
 
-    def start(self, host, port_command, port_telemetry, timeout=10.0):
+    def start(
+        self, host, port_command, port_telemetry, sequence_generator=None, timeout=10.0
+    ):
         """Start the task and connection.
 
         Parameters
@@ -103,6 +105,8 @@ class Model:
             IP port for the command server.
         port_telemetry : `int`
             IP port for the telemetry server.
+        sequence_generator : `generator` or `None`, optional
+            Sequence generator. (the default is None)
         timeout : `float`, optional
             Connection timeout in second. (default is 10.0)
         """
@@ -114,6 +118,7 @@ class Model:
             port_command,
             timeout_in_second=self.timeout_in_second,
             log=self.log,
+            sequence_generator=sequence_generator,
             maxsize_queue=maxsize_queue,
         )
         self.client_telemetry = TcpClient(
