@@ -17,6 +17,28 @@ To do the movement, M2 should be under the closed-loop control.
 It will report the new position based on the readings of 78 loading cells of actuators and the home position.
 In addition, there are 6 independent measurement system (IMS) sensors to support an independent calculation of rigid body position compared with the previous one.
 
+.. _State_Machine:
+
+State Machine
+=============
+
+The state machine of M2 CSC follows the state machine defined in *ts_salobj* module.
+When the CSC is in *STANDBY* state, there is no TCP/IP connection with the M2 controller.
+The TCP/IP connection is constructed when the M2 CSC transitions to *DISABLED* state.
+When the connection is on, the M2 CSC should be able to get the telemetry from the M2 controller.
+You can use the SAL event ``controllerState`` to get the summary state of controller.
+The default controller's state is *OFFLINE*.
+When you transition the M2 CSC to *ENABLED* state, it will try to transition the M2 controller's state from *OFFLINE* to *ENABLED*.
+
+If the M2 controller is in *FAULT* state, the M2 CSC will be put into the *FAULT* state as well.
+When this happens, you should use the SAL command ``standby`` to transition the M2 CSC's state from *FAULT* to *STANDBY*.
+In this process, the M2 CSC will try to clear the error in M2 controller first.
+If the error is cleared, the M2 controller's state will be in *OFFLINE*.
+Then, the M2 CSC will disconnect from the M2 controller and transition to *STANDBY* state.
+
+If the M2 CSC is not in *STANDBY* state and losts the TCP/IP connection with M2 controller, it will transition to *FAULT* state and report the related error code.
+You can use the SAL command ``standby`` to transtion the CSC back to *STANDBY* state.
+
 .. _Interface:
 
 Interface
@@ -28,7 +50,7 @@ The ``applyForces`` command provides the delta accumulated force vector used in 
 The ``resetForceOffsets`` commmand causes the M2 assembly zero all force offsets in the closed-loop control.
 The ``positionMirror`` command adjusts the mirror’s rigid body position based on LTS-136 relative from the home position.
 The home position can be reconfigured.
-The ``clearErrors`` command clear all errors and transition to the *OFFLINE* state from *FAULT* state.
+The ``clearErrors`` command clear all errors in the controller.
 
 .. _Example_Use_Case:
 

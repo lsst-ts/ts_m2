@@ -29,7 +29,7 @@ from lsst.ts import salobj
 from lsst.ts.utils import make_done_future
 
 from .config_schema import CONFIG_SCHEMA
-from . import MsgType, Model, MockServer, CommandStatus, Translator
+from . import MsgType, ErrorCode, Model, MockServer, Translator
 from . import __version__
 
 __all__ = ["M2"]
@@ -55,7 +55,7 @@ class M2(salobj.ConfigurableCsc):
         configuration directory (obtained from `_get_default_config_dir`).
         This is provided for unit testing.
     initial_state : `lsst.ts.salobj.State` or `int`, optional
-        The initial state of the CSC.
+        The initial state of the CSC. (the default is salobj.State.STANDBY)
     simulation_mode : `int`, optional
         Simulation mode. The default is 0: do not simulate.
     verbose : `bool`, optional
@@ -80,10 +80,10 @@ class M2(salobj.ConfigurableCsc):
 
     # Class attributes comes from the upstream BaseCsc class
     valid_simulation_modes = (0, 1)
-    default_initial_state = salobj.State.OFFLINE
     version = __version__
 
-    COMMAND_TIME_OUTOUT_IN_SECOND = 10
+    # Command timeout in second
+    COMMAND_TIMEOUT = 10
 
     def __init__(
         self,
@@ -92,7 +92,7 @@ class M2(salobj.ConfigurableCsc):
         port_telemetry=50001,
         timeout_in_second=0.05,
         config_dir=None,
-        initial_state=salobj.State.OFFLINE,
+        initial_state=salobj.State.STANDBY,
         simulation_mode=0,
         verbose=False,
     ):
@@ -113,6 +113,9 @@ class M2(salobj.ConfigurableCsc):
 
         # IP address of the TCP/IP interface
         self._host = host
+
+        # Sequence generator
+        self._sequence_generator = salobj.index_generator()
 
         # Command port number of the TCP/IP interface
         self._port_command = port_command
@@ -161,12 +164,13 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        await self.model.client_telemetry.write(
-            MsgType.Telemetry,
-            "elevation",
-            msg_details=dict(actualPosition=data.actualPosition),
-            comp_name="MTMount",
-        )
+        if self.model.are_clients_connected():
+            await self.model.client_telemetry.write(
+                MsgType.Telemetry,
+                "elevation",
+                msg_details=dict(actualPosition=data.actualPosition),
+                comp_name="MTMount",
+            )
 
     async def set_mount_elevation_in_position_callback(self, data):
         """Callback function to notify the mount elevation in position.
@@ -177,12 +181,13 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        await self.model.client_command.write(
-            MsgType.Event,
-            "mountInPosition",
-            msg_details=dict(inPosition=data.inPosition),
-            comp_name="MTMount",
-        )
+        if self.model.are_clients_connected():
+            await self.model.client_command.write(
+                MsgType.Event,
+                "mountInPosition",
+                msg_details=dict(inPosition=data.inPosition),
+                comp_name="MTMount",
+            )
 
     async def configure(self, config):
         """Configure CSC.
@@ -239,7 +244,13 @@ class M2(salobj.ConfigurableCsc):
 
         # Run the mock server in the simulation mode
         # self.simulation_mode is the attribute from upstream: BaseCsc
-        if self.simulation_mode == 1 and self._mock_server is None:
+        if (self.summary_state == salobj.State.STANDBY) and (
+            self._mock_server is not None
+        ):
+            await self._mock_server.close()
+            self._mock_server = None
+
+        if (self.simulation_mode == 1) and (self._mock_server is None):
 
             self._mock_server = MockServer(
                 tcpip.LOCAL_HOST,
@@ -247,10 +258,9 @@ class M2(salobj.ConfigurableCsc):
                 port_telemetry=0,
                 log=self.log,
             )
-            # This is a hacking to get the configuration files in the OFFLINE
+            # This is a hacking to get the configuration files in the STANDBY
             # state
             self._mock_server.model.configure(self.config_dir, "harrisLUT")
-
             await self._mock_server.start()
 
         # Run the event and telemetry loops
@@ -264,8 +274,6 @@ class M2(salobj.ConfigurableCsc):
             self.log.debug("Starting the telemetry loop task.")
             self._task_telemetry_loop = asyncio.create_task(self._telemetry_loop())
 
-            await self.connect_server()
-
     async def _event_loop(self):
         """Update and output event information from component."""
 
@@ -273,16 +281,19 @@ class M2(salobj.ConfigurableCsc):
 
         while self._run_loops:
 
+            # Publish the SAL event
             if not self.model.queue_event.empty():
                 message = self.model.queue_event.get_nowait()
-
-                # Update the internal attribute: self._summary_state, which
-                # comes from the upstream class: BaseCsc
-                message_name = message["id"]
-                if message_name == "summaryState":
-                    self._summary_state = salobj.State(message["summaryState"])
-
                 self._publish_message_by_sal("evt_", message)
+
+            # Fault the CSC if the controller is in Fault
+            if (self.model.controller_state == salobj.State.FAULT) and (
+                self.summary_state != salobj.State.FAULT
+            ):
+                self.fault(
+                    code=ErrorCode.ControllerInFault,
+                    report="Controller's state is Fault.",
+                )
 
             else:
                 await asyncio.sleep(self.timeout_in_second)
@@ -300,14 +311,19 @@ class M2(salobj.ConfigurableCsc):
             Message from the component.
         """
 
-        message_name = message["id"]
+        message_payload = self._translator.translate(message)
+
+        message_name = message_payload["id"]
         sal_topic_name = prefix_sal_topic + message_name
 
         if hasattr(self, sal_topic_name):
-            message_payload = self._translator.translate(message)
+            message_payload.pop("id")
             getattr(self, sal_topic_name).set_put(**message_payload)
         else:
-            self.log.warning(f"Unspecified message: {message_name}, ignoring...")
+            message_name_original = message["id"]
+            self.log.warning(
+                f"Unspecified message: {message_name_original}, ignoring..."
+            )
 
     async def _telemetry_loop(self):
         """Update and output telemetry information from component."""
@@ -316,7 +332,9 @@ class M2(salobj.ConfigurableCsc):
 
         while self._run_loops:
 
-            if not self.model.client_telemetry.queue.empty():
+            if self.model.are_clients_connected() and (
+                not self.model.client_telemetry.queue.empty()
+            ):
                 message = self.model.client_telemetry.queue.get_nowait()
                 self._publish_message_by_sal("tel_", message)
 
@@ -325,8 +343,24 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Telemetry loop from component closed.")
 
-    async def connect_server(self):
-        """Connect the TCP/IP server."""
+    async def do_start(self, data):
+        await self._connect_server(self.COMMAND_TIMEOUT)
+
+        await super().do_start(data)
+
+    async def _connect_server(self, timeout):
+        """Connect the TCP/IP server.
+
+        Parameters
+        ----------
+        timeout : `float`
+            Connection timeout in second.
+
+        Raises
+        ------
+        RuntimeError
+            If timeout in connection.
+        """
 
         # self.simulation_mode is the attribute from upstream: BaseCsc
         if self.simulation_mode == 0:
@@ -339,45 +373,139 @@ class M2(salobj.ConfigurableCsc):
             port_command = self._mock_server.server_command.port
             port_telemetry = self._mock_server.server_telemetry.port
 
-        self.model.start(host, port_command, port_telemetry)
+        self.model.start(
+            host,
+            port_command,
+            port_telemetry,
+            sequence_generator=self._sequence_generator,
+            timeout=timeout,
+        )
 
-    async def do_enterControl(self, data):
-        """Go from OFFLINE state, Available offline substate to STANDBY.
+        time_start = time.monotonic()
+        connection_pooling_time = 0.1
+        while not self.model.are_clients_connected() and (
+            (time.monotonic() - time_start) < timeout
+        ):
+            await asyncio.sleep(connection_pooling_time)
+
+        if not self.model.are_clients_connected():
+            raise RuntimeError(
+                f"Timeount in connection. Host: {host}, ports: {port_command} and {port_telemetry}"
+            )
+
+    async def do_standby(self, data):
+
+        # Try to transition the controller's state to OFFLINE state before
+        # closing the connection
+        if self.model.are_clients_connected():
+
+            timeout = self.COMMAND_TIMEOUT
+
+            # Try to clear the error if any
+            if self.model.controller_state == salobj.State.FAULT:
+                await self._clear_controller_errors()
+
+            await self._transition_controller_state(
+                salobj.State.DISABLED, "standby", timeout
+            )
+            await self._transition_controller_state(
+                salobj.State.STANDBY, "exitControl", timeout
+            )
+
+        # Disconnect from the server
+        await self.model.close()
+
+        await super().do_standby(data)
+
+    async def do_enable(self, data):
+
+        timeout = self.COMMAND_TIMEOUT
+
+        await self._transition_controller_state(
+            salobj.State.OFFLINE, "enterControl", timeout
+        )
+
+        # Do the acknowledgement when the controller is in STANDBY state
+        self.cmd_enable.ack_in_progress(data, timeout=timeout)
+
+        await self._transition_controller_state(salobj.State.STANDBY, "start", timeout)
+        await self._transition_controller_state(
+            salobj.State.DISABLED, "enable", timeout
+        )
+
+        await super().do_enable(data)
+
+    async def do_disable(self, data):
+
+        timeout = self.COMMAND_TIMEOUT
+
+        await self._transition_controller_state(
+            salobj.State.ENABLED, "disable", timeout
+        )
+
+        # Do the acknowledgement when the controller is in DISABLED state
+        self.cmd_disable.ack_in_progress(data, timeout=timeout)
+
+        await self._transition_controller_state(
+            salobj.State.DISABLED, "standby", timeout
+        )
+        await self._transition_controller_state(
+            salobj.State.STANDBY, "exitControl", timeout
+        )
+
+        await super().do_disable(data)
+
+    async def _transition_controller_state(self, state_original, message_name, timeout):
+        """Transition the controller's state if possible.
+
+        This function will only do the transition if the controller'state right
+        now equals the state_original. Otherwise, nothing will happen.
 
         Parameters
         ----------
-        data : `object`
-            Data of the SAL message.
+        state_original : `lsst.ts.salobj.State`
+            Original controller's state.
+        message_name : `str`
+            Message name to do the state transition.
+        timeout : `float`
+            Connection timeout in second.
+
+        Raises
+        ------
+        ValueError
+            If the command (message_name) is not supported.
         """
 
-        self._assert_state("enterControl", [salobj.State.OFFLINE])
+        if message_name == "enterControl":
+            state_target = salobj.State.STANDBY
+        elif message_name == "start":
+            state_target = salobj.State.DISABLED
+        elif message_name == "enable":
+            state_target = salobj.State.ENABLED
+        elif message_name == "disable":
+            state_target = salobj.State.DISABLED
+        elif message_name == "standby":
+            state_target = salobj.State.STANDBY
+        elif message_name == "exitControl":
+            state_target = salobj.State.OFFLINE
+        else:
+            raise ValueError(f"{message_name} command is not supported.")
 
-        await self._write_command_to_server("enterControl", data)
+        try:
+            if self.model.controller_state == state_original:
+                await self.model.write_command_to_server(
+                    message_name,
+                    timeout=timeout,
+                    controller_state_expected=state_target,
+                )
 
-    async def do_start(self, data):
-        self._assert_state("start", [salobj.State.STANDBY])
+        except OSError:
+            await self.model.close()
 
-        await self._write_command_to_server("start", data)
-
-    async def do_enable(self, data):
-        self._assert_state("enable", [salobj.State.DISABLED])
-
-        await self._write_command_to_server("enable", data)
-
-    async def do_disable(self, data):
-        self._assert_state("disable", [salobj.State.ENABLED])
-
-        await self._write_command_to_server("disable", data)
-
-    async def do_standby(self, data):
-        self._assert_state("standby", [salobj.State.DISABLED])
-
-        await self._write_command_to_server("standby", data)
-
-    async def do_exitControl(self, data):
-        self._assert_state("exitControl", [salobj.State.STANDBY])
-
-        await self._write_command_to_server("exitControl", data)
+            self.fault(
+                code=ErrorCode.NoConnection,
+                report="Lost the TCP/IP connection.",
+            )
 
     async def do_applyForces(self, data):
         """Apply force.
@@ -387,11 +515,14 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.assert_enabled()
+        message_name = "applyForces"
+        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
         message_details = dict(axial=data.axial, tangent=data.tangent)
         await self._write_command_to_server(
-            "applyForces", data, message_details=message_details
+            message_name,
+            self.COMMAND_TIMEOUT,
+            message_details=message_details,
         )
 
     async def do_positionMirror(self, data):
@@ -402,13 +533,16 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.assert_enabled()
+        message_name = "positionMirror"
+        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
         message_details = dict(
             x=data.x, y=data.y, z=data.z, xRot=data.xRot, yRot=data.yRot, zRot=data.zRot
         )
         await self._write_command_to_server(
-            "positionMirror", data, message_details=message_details
+            message_name,
+            self.COMMAND_TIMEOUT,
+            message_details=message_details,
         )
 
     async def do_resetForceOffsets(self, data):
@@ -419,9 +553,13 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.assert_enabled()
+        message_name = "resetForceOffsets"
+        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
-        await self._write_command_to_server("resetForceOffsets", data)
+        await self._write_command_to_server(
+            message_name,
+            self.COMMAND_TIMEOUT,
+        )
 
     async def do_clearErrors(self, data):
         """Emulate clearError command.
@@ -432,7 +570,27 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        await self._write_command_to_server("clearErrors", data)
+        await self._clear_controller_errors()
+
+    async def _clear_controller_errors(self):
+        """Clear the controller errors.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        try:
+            await self.model.clear_errors()
+
+        except OSError:
+            await self.model.close()
+
+            self.fault(
+                code=ErrorCode.NoConnection,
+                report="Lost the TCP/IP connection.",
+            )
 
     async def do_selectInclinationSource(self, data):
         """Command to select source of inclination data.
@@ -442,10 +600,14 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self._assert_state("selectInclinationSource", [salobj.State.DISABLED])
+        message_name = "selectInclinationSource"
+        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
+        message_details = dict(source=data.source)
         await self._write_command_to_server(
-            "selectInclinationSource", data, message_details=dict(source=data.source)
+            message_name,
+            self.COMMAND_TIMEOUT,
+            message_details=message_details,
         )
 
     async def do_setTemperatureOffset(self, data):
@@ -457,11 +619,14 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self._assert_state("setTemperatureOffset", [salobj.State.DISABLED])
+        message_name = "setTemperatureOffset"
+        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
         message_details = dict(ring=data.ring, intake=data.intake, exhaust=data.exhaust)
         await self._write_command_to_server(
-            "setTemperatureOffset", data, message_details=message_details
+            message_name,
+            self.COMMAND_TIMEOUT,
+            message_details=message_details,
         )
 
     async def do_switchForceBalanceSystem(self, data):
@@ -472,41 +637,31 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.assert_enabled()
+        message_name = "switchForceBalanceSystem"
+        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
+        message_details = dict(status=data.status)
         await self._write_command_to_server(
-            "switchForceBalanceSystem", data, message_details=dict(status=data.status)
+            message_name,
+            self.COMMAND_TIMEOUT,
+            message_details=message_details,
         )
 
-    def _assert_state(self, command_name, allowed_curr_states):
-        """Assert the current summary state is allowed to do the command or
-        not.
+    def _assert_enabled_csc_and_controller(self, message_name, allowed_curr_states):
+        """Assert the CSC and controller are in ENABLED state.
 
         Parameters
         ----------
         command_name : `str`
             Command name.
-        allowed_curr_states : `list`
+        allowed_curr_states : `list [lsst.ts.salobj.State]`
             Allowed current states.
-
-        Raises
-        ------
-        lsst.ts.salobj.ExpectedError
-            When the command is not allowed in current state.
         """
-
-        # Make sure the data type of allowed_curr_states is list
-        if not isinstance(allowed_curr_states, list):
-            allowed_curr_states = [allowed_curr_states]
-
-        curr_state = self.summary_state
-        if curr_state not in allowed_curr_states:
-            raise salobj.ExpectedError(
-                f"{command_name} command is not allowed in state {curr_state!r}."
-            )
+        self.model.assert_controller_state(message_name, allowed_curr_states)
+        self.assert_enabled()
 
     async def _write_command_to_server(
-        self, message_name, data, command_name=None, message_details=None
+        self, message_name, timeout, message_details=None
     ):
         """Write the command to server.
 
@@ -514,89 +669,26 @@ class M2(salobj.ConfigurableCsc):
         ----------
         message_name : `str`
             Message name to server.
-        data : `object`
-            Data of the SAL message.
-        command_name : `str` or None, optional
-            Command name of SAL. This might be different from the message_name
-            when communicating with the M2 cell instead of M2 server. If None,
-            use the message_name instead. (the default is None)
+        timeout : `float`
+            Timeout of command in second.
         message_details : `dict` or None, optional
             Message details. (the default is None)
-
-        Raises
-        ------
-        lsst.ts.salobj.ExpectedError
-            When no command acknowledgement for command from server.
         """
 
-        # Send the command
-        self.model.last_command_status = CommandStatus.Unknown
-        await self.model.client_command.write(
-            MsgType.Command, message_name, msg_details=message_details
-        )
-
-        # Decide the command name of SAL
-        _command_name = command_name if command_name is not None else message_name
-
-        # Track the command status
-        send_ack = await self._handle_command_acknowledgement(
-            _command_name, data, self.COMMAND_TIME_OUTOUT_IN_SECOND
-        )
-
-        if send_ack is False:
-            raise salobj.ExpectedError(
-                f"No command acknowledgement for {_command_name} from server."
+        try:
+            await self.model.write_command_to_server(
+                message_name,
+                message_details=message_details,
+                timeout=timeout,
             )
 
-    async def _handle_command_acknowledgement(self, command_name, data, timeout):
-        """Handle the command acknowledgement for the controller.
+        except OSError:
+            await self.model.close()
 
-        Parameters
-        ----------
-        command_name : `str`
-            Command name of SAL.
-        data : `object`
-            Data of the SAL message.
-        timeout : `float`
-           Timeout of command acknowledgement in second.
-
-        Returns
-        -------
-        send_ack : `bool`
-            True if send the acknowledgement. Else, False.
-
-        Raises
-        ------
-        lsst.ts.salobj.ExpectedError
-            When the command is failed.
-        """
-
-        send_ack = False
-
-        time_start = time.monotonic()
-        while time.monotonic() - time_start < timeout:
-
-            last_command_status = self.model.last_command_status
-            if last_command_status == CommandStatus.Success:
-                # Wait one second to let the event and telemetry loops have
-                # the time to publish the messages
-                await asyncio.sleep(1)
-                send_ack = True
-                break
-
-            elif last_command_status == CommandStatus.Fail:
-                raise salobj.ExpectedError(f"{command_name} is failed.")
-
-            elif (last_command_status == CommandStatus.Ack) and (send_ack is False):
-                send_ack = True
-                # Call self.cmd_{_command_name}.ack_in_progress() dynamically
-                getattr(self, f"cmd_{command_name}").ack_in_progress(
-                    data, timeout=timeout
-                )
-
-            await asyncio.sleep(10 * self.timeout_in_second)
-
-        return send_ack
+            self.fault(
+                code=ErrorCode.NoConnection,
+                report="Lost the TCP/IP connection.",
+            )
 
     @staticmethod
     def get_config_pkg():

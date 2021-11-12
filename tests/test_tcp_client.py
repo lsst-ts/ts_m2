@@ -27,6 +27,7 @@ import socket
 import logging
 import json
 
+from lsst.ts import salobj
 from lsst.ts import tcpip
 from lsst.ts.m2 import MsgType, TcpClient, write_json_packet
 
@@ -42,6 +43,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls):
         cls.host = tcpip.LOCAL_HOST
         cls.log = logging.getLogger()
+        cls.times_previous_command = 3
 
     @contextlib.asynccontextmanager
     async def make_server(self):
@@ -71,13 +73,30 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             TCP/IP server.
         """
 
-        client = TcpClient(server.host, server.port, log=self.log, maxsize_queue=8)
+        # Create a sequence generator and run it for a couple times first
+        sequence_generator = salobj.index_generator()
+        for count in range(self.times_previous_command):
+            next(sequence_generator)
+
+        client = TcpClient(
+            server.host,
+            server.port,
+            log=self.log,
+            sequence_generator=sequence_generator,
+            maxsize_queue=8,
+        )
         await client.connect()
 
         try:
             yield client
         finally:
             await client.close()
+
+    async def test_connect_timeout(self):
+        client = TcpClient(self.host, 8888)
+
+        with self.assertRaises(asyncio.TimeoutError):
+            await client.connect(timeout=3.0)
 
     async def test_close(self):
         client = TcpClient(tcpip.LOCAL_HOST, 0)
@@ -95,6 +114,26 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.1)
 
             self.assertFalse(client.is_connected())
+
+    async def test_connect_multiple_times(self):
+
+        async with self.make_server() as server, self.make_client(server) as client:
+
+            self.assertTrue(client.is_connected())
+            self.assertTrue(server.connected)
+
+            # Need to add a small time to close the client's connection totally
+            await client.close()
+            await asyncio.sleep(0.1)
+
+            self.assertFalse(client.is_connected())
+            self.assertFalse(server.connected)
+
+            # Try to re-connect to server
+            await client.connect()
+
+            self.assertTrue(client.is_connected())
+            self.assertTrue(server.connected)
 
     async def test_write_no_connection(self):
 
@@ -115,12 +154,12 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
             self.assertEqual(message["id"], "cmd_" + msg_name)
-            self.assertEqual(message["sequence_id"], 1)
+            self.assertEqual(message["sequence_id"], self.times_previous_command + 1)
             self.assertEqual(message["x"], msg_details["x"])
             self.assertEqual(message["y"], msg_details["y"])
             self.assertEqual(message["z"], msg_details["z"])
 
-            self.assertEqual(client.last_sequence_id, 1)
+            self.assertEqual(client.last_sequence_id, self.times_previous_command + 1)
 
     async def _read_msg_in_server(self, server, timeout):
         """Read the received message in server.
@@ -148,7 +187,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
 
                 message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
-                sequence_id_expected = count + 1
+                sequence_id_expected = self.times_previous_command + count + 1
                 self.assertEqual(message["sequence_id"], sequence_id_expected)
                 self.assertEqual(client.last_sequence_id, sequence_id_expected)
 
@@ -161,7 +200,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
             message = await self._read_msg_in_server(server, READ_TIMEOUT)
 
             self.assertEqual(message["id"], "cmd_" + msg_name)
-            self.assertEqual(message["sequence_id"], 1)
+            self.assertEqual(message["sequence_id"], self.times_previous_command + 1)
 
     async def test_write_id_error(self):
         async with self.make_server() as server, self.make_client(server) as client:

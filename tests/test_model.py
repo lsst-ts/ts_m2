@@ -27,6 +27,7 @@ import unittest
 import pathlib
 
 from lsst.ts import tcpip
+from lsst.ts import salobj
 from lsst.ts.m2 import MockServer, Model, CommandStatus, MsgType
 
 
@@ -102,6 +103,11 @@ class TestModel(unittest.IsolatedAsyncioTestCase):
         async with self.make_server() as server, self.make_model(server) as model:
             self.assertTrue(model.are_clients_connected())
 
+    def test_are_clients_connected_no_connection(self):
+        model = Model()
+
+        self.assertFalse(model.are_clients_connected())
+
     async def test_task_connection(self):
         async with self.make_server() as server, self.make_model(server) as model:
 
@@ -127,27 +133,18 @@ class TestModel(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(1)
             self.assertEqual(model.queue_event.qsize(), 9)
 
-    async def test_last_command_status_success(self):
+    async def test_controller_state(self):
         async with self.make_server() as server, self.make_model(server) as model:
 
-            await model.client_command.write(MsgType.Command, "enterControl")
+            # Wait a little time to collect the event messages
+            await asyncio.sleep(1)
+            self.assertEqual(model.controller_state, salobj.State.OFFLINE)
 
-            # Wait a little time to collect the messages
-            await asyncio.sleep(2)
-            self.assertEqual(model.last_command_status, CommandStatus.Success)
+            # Check to get the Fault state
+            server.model.fault()
+            await asyncio.sleep(1)
 
-    async def test_last_command_status_fail(self):
-        async with self.make_server() as server, self.make_model(server) as model:
-
-            await model.client_command.write(
-                MsgType.Command,
-                "switchForceBalanceSystem",
-                msg_details={"status": True},
-            )
-
-            # Wait a little time to collect the messages
-            await asyncio.sleep(2)
-            self.assertEqual(model.last_command_status, CommandStatus.Fail)
+            self.assertEqual(model.controller_state, salobj.State.FAULT)
 
     async def test_last_command_status_ack_success(self):
         async with self.make_server() as server, self.make_model(server) as model:
@@ -161,6 +158,105 @@ class TestModel(unittest.IsolatedAsyncioTestCase):
             # Wait a little time to collect the messages
             await asyncio.sleep(7)
             self.assertEqual(model.last_command_status, CommandStatus.Success)
+
+    async def test_write_command_to_server_success(self):
+        async with self.make_server() as server, self.make_model(server) as model:
+
+            await model.write_command_to_server(
+                "enterControl", controller_state_expected=salobj.State.STANDBY
+            )
+
+            self.assertEqual(model.controller_state, salobj.State.STANDBY)
+
+    async def test_write_command_to_server_wrong_expectation(self):
+        async with self.make_server() as server, self.make_model(server) as model:
+
+            with self.assertRaises(RuntimeError):
+                await model.write_command_to_server(
+                    "enterControl", controller_state_expected=salobj.State.ENABLED
+                )
+
+    async def test_write_command_to_server_short_timeout(self):
+        async with self.make_server() as server, self.make_model(server) as model:
+
+            with self.assertRaises(RuntimeError):
+                await model.write_command_to_server(
+                    "enable",
+                    timeout=2.0,
+                    controller_state_expected=salobj.State.ENABLED,
+                )
+
+    async def test_write_command_to_server_fail(self):
+        async with self.make_server() as server, self.make_model(server) as model:
+
+            with self.assertRaises(RuntimeError):
+                await model.write_command_to_server(
+                    "switchForceBalanceSystem", message_details={"status": True}
+                )
+
+    async def test_write_command_to_closed_server(self):
+        async with self.make_server() as server, self.make_model(server) as model:
+
+            await server.close()
+
+            with self.assertRaises(OSError):
+                await model.write_command_to_server(
+                    "switchForceBalanceSystem", message_details={"status": True}
+                )
+
+    async def test_write_command_to_server_no_this_command(self):
+        async with self.make_server() as server, self.make_model(server) as model:
+
+            with self.assertRaises(RuntimeError):
+                await model.write_command_to_server("noThisCommand")
+
+    async def test_write_command_to_server_no_connection(self):
+
+        model = Model()
+        with self.assertRaises(OSError):
+            await model.write_command_to_server("noConnection")
+
+    async def test_clear_errors(self):
+        async with self.make_server() as server, self.make_model(server) as model:
+
+            # Fake the error
+            server.model.fault()
+            await asyncio.sleep(1)
+            self.assertEqual(model.controller_state, salobj.State.FAULT)
+
+            # Clear the error
+            await model.clear_errors()
+
+            # Check the controller's state
+            self.assertTrue(server.model.error_cleared)
+            self.assertEqual(model.controller_state, salobj.State.OFFLINE)
+
+    def test_is_controller_state(self):
+
+        model = Model()
+
+        # Is controller's state
+        message = {"id": "summaryState", "summaryState": 1}
+        self.assertTrue(model._is_controller_state(message))
+
+        # Isn't controller's state
+        message = {"id": "temp", "temp": 1}
+        self.assertFalse(model._is_controller_state(message))
+
+    def test_assert_controller_state(self):
+
+        model = Model()
+
+        # Allowed state
+        model.assert_controller_state("enterControl", [salobj.State.OFFLINE])
+
+        # Disallowed state
+        self.assertRaises(
+            ValueError,
+            model.assert_controller_state,
+            "enterControl",
+            [salobj.State.ENABLED],
+        )
 
 
 if __name__ == "__main__":

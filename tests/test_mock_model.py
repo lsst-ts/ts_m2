@@ -307,6 +307,10 @@ class TestMockModel(unittest.TestCase):
         self.assertAlmostEqual(self.model.tangent_forces["lutGravity"][0], 0)
         self.assertAlmostEqual(self.model.tangent_forces["lutGravity"][1], 780.89259849)
 
+        np.testing.assert_array_equal(
+            self.model.tangent_forces["lutTemperature"], np.array([])
+        )
+
     def test_force_dynamics_in_position(self):
 
         demand = np.array([1, 2])

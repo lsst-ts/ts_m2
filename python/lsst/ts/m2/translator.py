@@ -41,20 +41,21 @@ class Translator:
             Message payload after the translation.
         """
 
-        message_reformat = self._handle_special_case(message)
+        message_reformat = message.copy()
 
-        message_payload = message_reformat.copy()
-        if "id" in message_payload.keys():
-            message_payload.pop("id")
+        message_name = message_reformat["id"]
+        if message_name == "tangentForce":
+            message_reformat = self._handle_tangent_force(message_reformat)
+        elif message_name == "summaryState":
+            message_reformat = self._handle_summary_state(message_reformat)
 
-        return message_payload
+        return message_reformat
 
-    def _handle_special_case(self, message):
-        """Handle the special case to refomat the message to match the format
-        of xml.
+    def _handle_tangent_force(self, message):
+        """Handle the message of tangent force.
 
-        Note: We will begin to implement this when communication with M2 cell
-        instead of M2 server.
+        The value of "lutTemperature" is [] because there is no correction of
+        LUT temperature for 6 tangent links.
 
         Parameters
         ----------
@@ -63,8 +64,29 @@ class Translator:
 
         Returns
         -------
-        `dict`
+        message : `dict`
             Reformated message.
         """
 
+        message["lutTemperature"] = [0] * 6
+
         return message
+
+    def _handle_summary_state(self, message):
+        """Handle the message of summary state.
+
+        Note: Reformat the summary state in controller to be the controller's
+        state.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+
+        Returns
+        -------
+        message : `dict`
+            Reformated message.
+        """
+
+        return dict(id="controllerState", controllerState=message["summaryState"])

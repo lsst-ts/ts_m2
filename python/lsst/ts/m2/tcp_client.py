@@ -47,6 +47,8 @@ class TcpClient:
     log : `logging.Logger` or None, optional
         A logger. If None, a logger will be instantiated. (the default is
         None)
+    sequence_generator : `generator` or `None`, optional
+        Sequence generator. (the default is None)
     maxsize_queue : `int`, optional
         Maximum size of queue. (the default is 1000)
 
@@ -62,7 +64,7 @@ class TcpClient:
         Reader of socker.
     writer : `asyncio.StreamWriter` or None
         Writer of the socket.
-    timeout_in_second : `float`
+    timeout : `float`
         Read timeout in second.
     last_sequence_id : `int`
         Last sequence ID of command.
@@ -71,7 +73,13 @@ class TcpClient:
     """
 
     def __init__(
-        self, host, port, timeout_in_second=0.05, log=None, maxsize_queue=1000
+        self,
+        host,
+        port,
+        timeout_in_second=0.05,
+        log=None,
+        sequence_generator=None,
+        maxsize_queue=1000,
     ):
 
         # Connection information
@@ -87,10 +95,14 @@ class TcpClient:
         self.reader = None
         self.writer = None
 
-        self.timeout_in_second = timeout_in_second
+        self.timeout = timeout_in_second
 
         # Sequence ID generator
-        self._sequence_id_generator = salobj.index_generator()
+        self._sequence_id_generator = (
+            sequence_generator
+            if sequence_generator is not None
+            else salobj.index_generator()
+        )
         self.last_sequence_id = -1
 
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))
@@ -98,7 +110,7 @@ class TcpClient:
         # Monitor loop task (asyncio.Future)
         self._monitor_loop_task = make_done_future()
 
-    async def connect(self, connect_retry_interval=1.0):
+    async def connect(self, connect_retry_interval=1.0, timeout=10.0):
         """Connect to the server.
 
         Parameters
@@ -106,14 +118,20 @@ class TcpClient:
         connect_retry_interval : `float`, optional
             How long to wait before trying to reconnect when connection fails.
             (default is 1.0)
+        timeout : `float`, optional
+            Timeout in second. This value should be larger than the
+            connect_retry_interval. (default is 10.0)
 
-        Notes
-        -----
-        This will wait forever for a connection.
+        Raises
+        ------
+        asyncio.TimeoutError
+            Connection timeout in the timeout period.
         """
 
-        self.log.info("Open the connection.")
+        self.log.info("Try to open the connection.")
 
+        retry_times_max = timeout // connect_retry_interval
+        retry_times = 0
         while not self.is_connected():
 
             try:
@@ -123,6 +141,10 @@ class TcpClient:
 
             except ConnectionRefusedError:
                 await asyncio.sleep(connect_retry_interval)
+
+                retry_times += 1
+                if retry_times >= retry_times_max:
+                    raise asyncio.TimeoutError("Connection timeout.")
 
         self.log.info("Connection is on.")
 
@@ -169,7 +191,7 @@ class TcpClient:
         try:
             data = await asyncio.wait_for(
                 self.reader.readuntil(separator=tcpip.TERMINATOR),
-                self.timeout_in_second,
+                self.timeout,
             )
 
             if data is not None:
@@ -180,7 +202,7 @@ class TcpClient:
                 check_queue_size(self.queue, self.log)
 
         except asyncio.TimeoutError:
-            await asyncio.sleep(self.timeout_in_second)
+            await asyncio.sleep(self.timeout)
 
         except json.JSONDecodeError:
             self.log.debug(f"Can not decode the message: {data_decode}.")
