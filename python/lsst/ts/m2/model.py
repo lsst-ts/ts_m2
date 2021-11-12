@@ -167,6 +167,8 @@ class Model:
             try:
                 if not self.client_command.queue.empty():
                     message = self.client_command.queue.get_nowait()
+                    self.log.debug(f"Receive the event message: {message}")
+
                     self._analyze_command_status_and_event(message)
                 else:
                     await asyncio.sleep(self.timeout)
