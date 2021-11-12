@@ -82,7 +82,8 @@ class M2(salobj.ConfigurableCsc):
     valid_simulation_modes = (0, 1)
     version = __version__
 
-    COMMAND_TIME_OUTOUT_IN_SECOND = 10
+    # Command timeout in second
+    COMMAND_TIMEOUT = 10
 
     def __init__(
         self,
@@ -343,7 +344,7 @@ class M2(salobj.ConfigurableCsc):
         self.log.debug("Telemetry loop from component closed.")
 
     async def do_start(self, data):
-        await self._connect_server(self.COMMAND_TIME_OUTOUT_IN_SECOND)
+        await self._connect_server(self.COMMAND_TIMEOUT)
 
         await super().do_start(data)
 
@@ -358,7 +359,7 @@ class M2(salobj.ConfigurableCsc):
         Raises
         ------
         RuntimeError
-            If can not connect the server before the timeout.
+            If timeout in connection.
         """
 
         # self.simulation_mode is the attribute from upstream: BaseCsc
@@ -381,13 +382,16 @@ class M2(salobj.ConfigurableCsc):
         )
 
         time_start = time.monotonic()
+        connection_pooling_time = 0.1
         while not self.model.are_clients_connected() and (
             (time.monotonic() - time_start) < timeout
         ):
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(connection_pooling_time)
 
         if not self.model.are_clients_connected():
-            raise RuntimeError("Can not connect the server before the timeout.")
+            raise RuntimeError(
+                f"Timeount in connection. Host: {host}, ports: {port_command} and {port_telemetry}"
+            )
 
     async def do_standby(self, data):
 
@@ -395,11 +399,11 @@ class M2(salobj.ConfigurableCsc):
         # closing the connection
         if self.model.are_clients_connected():
 
-            timeout = self.COMMAND_TIME_OUTOUT_IN_SECOND
+            timeout = self.COMMAND_TIMEOUT
 
             # Try to clear the error if any
             if self.model.controller_state == salobj.State.FAULT:
-                await self.do_clearErrors(data)
+                await self._clear_controller_errors()
 
             await self._transition_controller_state(
                 salobj.State.DISABLED, "standby", timeout
@@ -415,7 +419,7 @@ class M2(salobj.ConfigurableCsc):
 
     async def do_enable(self, data):
 
-        timeout = self.COMMAND_TIME_OUTOUT_IN_SECOND
+        timeout = self.COMMAND_TIMEOUT
 
         await self._transition_controller_state(
             salobj.State.OFFLINE, "enterControl", timeout
@@ -433,7 +437,7 @@ class M2(salobj.ConfigurableCsc):
 
     async def do_disable(self, data):
 
-        timeout = self.COMMAND_TIME_OUTOUT_IN_SECOND
+        timeout = self.COMMAND_TIMEOUT
 
         await self._transition_controller_state(
             salobj.State.ENABLED, "disable", timeout
@@ -517,7 +521,7 @@ class M2(salobj.ConfigurableCsc):
         message_details = dict(axial=data.axial, tangent=data.tangent)
         await self._write_command_to_server(
             message_name,
-            self.COMMAND_TIME_OUTOUT_IN_SECOND,
+            self.COMMAND_TIMEOUT,
             message_details=message_details,
         )
 
@@ -537,7 +541,7 @@ class M2(salobj.ConfigurableCsc):
         )
         await self._write_command_to_server(
             message_name,
-            self.COMMAND_TIME_OUTOUT_IN_SECOND,
+            self.COMMAND_TIMEOUT,
             message_details=message_details,
         )
 
@@ -554,11 +558,22 @@ class M2(salobj.ConfigurableCsc):
 
         await self._write_command_to_server(
             message_name,
-            self.COMMAND_TIME_OUTOUT_IN_SECOND,
+            self.COMMAND_TIMEOUT,
         )
 
     async def do_clearErrors(self, data):
         """Emulate clearError command.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        await self._clear_controller_errors()
+
+    async def _clear_controller_errors(self):
+        """Clear the controller errors.
 
         Parameters
         ----------
@@ -591,7 +606,7 @@ class M2(salobj.ConfigurableCsc):
         message_details = dict(source=data.source)
         await self._write_command_to_server(
             message_name,
-            self.COMMAND_TIME_OUTOUT_IN_SECOND,
+            self.COMMAND_TIMEOUT,
             message_details=message_details,
         )
 
@@ -610,7 +625,7 @@ class M2(salobj.ConfigurableCsc):
         message_details = dict(ring=data.ring, intake=data.intake, exhaust=data.exhaust)
         await self._write_command_to_server(
             message_name,
-            self.COMMAND_TIME_OUTOUT_IN_SECOND,
+            self.COMMAND_TIMEOUT,
             message_details=message_details,
         )
 
@@ -628,7 +643,7 @@ class M2(salobj.ConfigurableCsc):
         message_details = dict(status=data.status)
         await self._write_command_to_server(
             message_name,
-            self.COMMAND_TIME_OUTOUT_IN_SECOND,
+            self.COMMAND_TIMEOUT,
             message_details=message_details,
         )
 

@@ -58,7 +58,7 @@ class Model:
         Queue of the event.
     last_command_status : `CommandStatus`
         Last command status.
-    timeout_in_second : `float`
+    timeout : `float`
         Time limit for reading data from the TCP/IP interface (sec).
     controller_state: `lsst.ts.salobj.State`
         Controller's state.
@@ -79,7 +79,7 @@ class Model:
 
         self.last_command_status = CommandStatus.Unknown
 
-        self.timeout_in_second = timeout_in_second
+        self.timeout = timeout_in_second
 
         self.controller_state = salobj.State.OFFLINE
 
@@ -116,7 +116,7 @@ class Model:
         self.client_command = TcpClient(
             host,
             port_command,
-            timeout_in_second=self.timeout_in_second,
+            timeout_in_second=self.timeout,
             log=self.log,
             sequence_generator=sequence_generator,
             maxsize_queue=maxsize_queue,
@@ -124,7 +124,7 @@ class Model:
         self.client_telemetry = TcpClient(
             host,
             port_telemetry,
-            timeout_in_second=self.timeout_in_second,
+            timeout_in_second=self.timeout,
             log=self.log,
             maxsize_queue=maxsize_queue,
         )
@@ -169,7 +169,7 @@ class Model:
                     message = self.client_command.queue.get_nowait()
                     self._analyze_command_status_and_event(message)
                 else:
-                    await asyncio.sleep(self.timeout_in_second)
+                    await asyncio.sleep(self.timeout)
 
             except asyncio.QueueFull:
                 self.log.exception("Internal queue of event is full.")
@@ -187,9 +187,6 @@ class Model:
 
         if self._is_command_status(message):
             self.last_command_status = self._get_command_status(message)
-            return
-
-        if self._is_error_code_zero(message):
             return
 
         # Update the controller state
@@ -272,27 +269,6 @@ class Model:
         elif message_name == CommandStatus.NoAck.name.lower():
             return CommandStatus.NoAck
 
-    def _is_error_code_zero(self, message):
-        """Is the error code 0 or not.
-
-        Note: This function is to workaround the bug from M2 LabVIEW code.
-
-        Parameters
-        ----------
-        message : `dict`
-            Incoming message.
-
-        Returns
-        -------
-        `bool`
-            True if the message is the error code 0. Else, False.
-        """
-
-        if (message["id"] == "errorCode") and (message["errorCode"] == 0):
-            return True
-        else:
-            return False
-
     def _is_controller_state(self, message):
         """Is the controller's state or not.
 
@@ -307,7 +283,7 @@ class Model:
             True if the message is the controller's state. Else, False.
         """
 
-        return True if message["id"] == "summaryState" else False
+        return message["id"] == "summaryState"
 
     def are_clients_connected(self):
         """The command and telemetry sockets are connected or not.
@@ -446,6 +422,7 @@ class Model:
         """
 
         # Track the command status
+        time_wait_command_status_update = 0.5
         time_start = time.monotonic()
         while time.monotonic() - time_start < timeout:
 
@@ -455,9 +432,9 @@ class Model:
                 if controller_state_expected is None:
                     return True
                 else:
-                    # Wait one second to let the event loop have the time to
+                    # Wait some time to let the event loop have the time to
                     # analyze the messages
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(time_wait_command_status_update)
 
                     # Check the controller's state is expected or not
                     if self.controller_state == controller_state_expected:
@@ -467,7 +444,7 @@ class Model:
             elif last_command_status in (CommandStatus.Fail, CommandStatus.NoAck):
                 return False
 
-            await asyncio.sleep(10 * self.timeout_in_second)
+            await asyncio.sleep(time_wait_command_status_update)
 
         # Log the condition that the state transition is successful, but no
         # result received

@@ -231,18 +231,6 @@ class TestModel(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(server.model.error_cleared)
             self.assertEqual(model.controller_state, salobj.State.OFFLINE)
 
-    def test_is_error_code_zero(self):
-
-        model = Model()
-
-        # Error code is 0
-        message = {"id": "errorCode", "errorCode": 0}
-        self.assertTrue(model._is_error_code_zero(message))
-
-        # Error code is not 0
-        message = {"id": "errorCode", "errorCode": 1}
-        self.assertFalse(model._is_error_code_zero(message))
-
     def test_is_controller_state(self):
 
         model = Model()

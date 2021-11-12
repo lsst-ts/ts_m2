@@ -64,7 +64,7 @@ class TcpClient:
         Reader of socker.
     writer : `asyncio.StreamWriter` or None
         Writer of the socket.
-    timeout_in_second : `float`
+    timeout : `float`
         Read timeout in second.
     last_sequence_id : `int`
         Last sequence ID of command.
@@ -95,13 +95,14 @@ class TcpClient:
         self.reader = None
         self.writer = None
 
-        self.timeout_in_second = timeout_in_second
+        self.timeout = timeout_in_second
 
         # Sequence ID generator
-        if sequence_generator is None:
-            self._sequence_id_generator = salobj.index_generator()
-        else:
-            self._sequence_id_generator = sequence_generator
+        self._sequence_id_generator = (
+            sequence_generator
+            if sequence_generator is not None
+            else salobj.index_generator()
+        )
         self.last_sequence_id = -1
 
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))
@@ -124,7 +125,7 @@ class TcpClient:
         Raises
         ------
         asyncio.TimeoutError
-            Connection timeout.
+            Connection timeout in the timeout period.
         """
 
         self.log.info("Try to open the connection.")
@@ -190,7 +191,7 @@ class TcpClient:
         try:
             data = await asyncio.wait_for(
                 self.reader.readuntil(separator=tcpip.TERMINATOR),
-                self.timeout_in_second,
+                self.timeout,
             )
 
             if data is not None:
@@ -201,7 +202,7 @@ class TcpClient:
                 check_queue_size(self.queue, self.log)
 
         except asyncio.TimeoutError:
-            await asyncio.sleep(self.timeout_in_second)
+            await asyncio.sleep(self.timeout)
 
         except json.JSONDecodeError:
             self.log.debug(f"Can not decode the message: {data_decode}.")
