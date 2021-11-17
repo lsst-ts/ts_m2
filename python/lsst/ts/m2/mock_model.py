@@ -34,55 +34,58 @@ __all__ = ["MockModel"]
 
 
 class MockModel:
+    """Mock Model class.
+
+    Parameters
+    ----------
+    log : `logging.Logger` or None, optional
+        A logger. If None, a logger will be instantiated. (the default is
+        None)
+    telemetry_interval : `float`, optional
+        Telemetry interval in second. (the default is 0.05, which means
+        20 Hz)
+
+    Attributes
+    ----------
+    log : `logging.Logger`
+        A logger.
+    telemetry_interval : `float`
+        Telemetry interval in second.
+    inclination_source : `MTM2.InclinationTelemetrySource`
+        Source of the inclination.
+    zenith_angle : `float`
+        Zenith angle in degree.
+    n_actuators : `int`
+        Number of axial actuators.
+    n_tangent_actuators : `int`
+        Number of tangent actuators.
+    mirror_position : `dict`
+        Mirror position. The key is the axis (x, y, z, xRot, yRot, zRot) of
+        mirror. The units are the micron and arcsec.
+    temperature : `dict`
+        Temperature of mirror in degree C.
+    axial_forces : `dict`
+        Forces of the axial actuators in Newton.
+    tangent_forces : `dict`
+        Forces of the tangent actuators in Newton.
+    force_balance : `dict`
+        Force balance system contains the information of force and moment.
+        The units are the Newton and Newton * meter.
+    force_balance_system_status : `bool`
+        Force balance system is on or off.
+    actuator_power_on : `bool`
+        Actuator power is on or not.
+    in_position : `bool`
+        M2 assembly is in position or not.
+    lut : `dict`
+        Look-up table (LUT).
+    error_cleared : `bool`
+        Error is cleared or not.
+    mtmount_in_position : `bool`
+        MTMount in position or not.
+    """
+
     def __init__(self, log=None, telemetry_interval=0.05):
-        """Initialize the Mock Model class.
-
-        Parameters
-        ----------
-        log : `logging.Logger` or None, optional
-            A logger. If None, a logger will be instantiated. (the default is
-            None)
-        telemetry_interval : `float`, optional
-            Telemetry interval in second. (the default is 0.05, which means
-            20 Hz)
-
-        Attributes
-        ----------
-        log : `logging.Logger`
-            A logger.
-        telemetry_interval : `float`
-            Telemetry interval in second.
-        inclination_source : `MTM2.InclinationTelemetrySource`
-            Source of the inclination.
-        zenith_angle : `float`
-            Zenith angle in degree.
-        n_actuators : `int`
-            Number of axial actuators.
-        n_tangent_actuators : `int`
-            Number of tangent actuators.
-        mirror_position : `dict`
-            Mirror position. The key is the axis (x, y, z, xRot, yRot, zRot) of
-            mirror. The units are the micron and arcsec.
-        temperature : `dict`
-            Temperature of mirror in degree C.
-        axial_forces : `dict`
-            Forces of the axial actuators in Newton.
-        tangent_forces : `dict`
-            Forces of the tangent actuators in Newton.
-        force_balance : `dict`
-            Force balance system contains the information of force and moment.
-            The units are the Newton and Newton * meter.
-        force_balance_system_status : `bool`
-            Force balance system is on or off.
-        actuator_power_on : `bool`
-            Actuator power is on or not.
-        in_position : `bool`
-            M2 assembly is in position or not.
-        lut : `dict`
-            Look-up table (LUT).
-        error_cleared : `bool`
-            Error is cleared or not.
-        """
 
         # Set the logger
         if log is None:
@@ -121,13 +124,15 @@ class MockModel:
                 (item, np.zeros(self.n_tangent_actuators))
                 for item in (
                     "lutGravity",
-                    "lutTemperature",
                     "applied",
                     "measured",
                     "hardpointCorrection",
                 )
             ]
         )
+        # No LUT temperature correction for tangent links
+        self.tangent_forces["lutTemperature"] = np.array([])
+
         self.force_balance = dict(
             [(axis, 0) for axis in ("fx", "fy", "fz", "mx", "my", "mz")]
         )
@@ -148,6 +153,8 @@ class MockModel:
         self.lut = dict()
 
         self.error_cleared = True
+
+        self.mtmount_in_position = False
 
     def _get_default_temperatures(
         self, temperature_init=11.0, temperature_ref=21.0, max_difference=2.0
@@ -310,6 +317,13 @@ class MockModel:
 
         return True if diff > self.temperature["maxDiff"] else False
 
+    def fault(self):
+        """Fault the model."""
+
+        self.error_cleared = False
+        self.switch_force_balance_system(False)
+        self.reset_force_offsets()
+
     def switch_force_balance_system(self, status):
         """Switch the force balance system.
 
@@ -410,7 +424,6 @@ class MockModel:
         demanded_tanget_force = np.array(
             (apply if apply is not None else self.tangent_forces["applied"])
             + self.tangent_forces["lutGravity"]
-            + self.tangent_forces["lutTemperature"]
             + self.tangent_forces["hardpointCorrection"]
         )
 
@@ -1017,7 +1030,7 @@ class MockModel:
             True if succeeds. Otherwise, False.
         """
 
-        if not self.actuator_power_on:
+        if (not self.actuator_power_on) or (self.force_balance_system_status is False):
             return False
 
         # Check limits

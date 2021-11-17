@@ -16,7 +16,6 @@ build:
     - PYTHON_BUILD_VERSION
     - PYTHON_BUILD_LOCATION
     - TS_CONFIG_MTTCS_DIR
-    - LSST_DDS_DOMAIN
 
 test:
   requires:
@@ -27,9 +26,10 @@ test:
     - ts-idl {{ idl_version }}
     - ts-salobj {{ salobj_version }}
     - ts-tcpip
+    - ts-utils
   source_files:
     - python
-    - bin.src
+    - bin
     - tests
     - setup.cfg
   commands:
@@ -50,3 +50,4 @@ requirements:
     - ts-simactuators
     - pandas
     - ts-tcpip
+    - ts-utils

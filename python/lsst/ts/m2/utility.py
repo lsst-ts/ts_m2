@@ -23,7 +23,7 @@ import json
 
 from lsst.ts import tcpip
 
-__all__ = ["write_json_packet"]
+__all__ = ["write_json_packet", "check_queue_size"]
 
 
 async def write_json_packet(writer, msg_input):
@@ -42,3 +42,30 @@ async def write_json_packet(writer, msg_input):
 
     writer.write(msg)
     await writer.drain()
+
+
+def check_queue_size(queue, log):
+    """Check the size of queue and log the information if needed.
+
+    Parameters
+    ----------
+    queue : `asyncio.Queue`
+        Queue.
+    log : `logging.Logger`
+        A logger.
+
+    Returns
+    -------
+    `bool`
+        True if the information is logged or not. Otherwise, Fault.
+    """
+
+    queue_size = queue.qsize()
+    maxsize = queue.maxsize
+
+    if queue_size > maxsize // 2:
+        log.info(f"Size of queue is: {queue_size}/{maxsize}.")
+        return True
+
+    else:
+        return False

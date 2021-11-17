@@ -19,9 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import pathlib
 import numpy as np
 import unittest
+import pathlib
 
 from lsst.ts.idl.enums import MTM2
 
@@ -36,7 +36,6 @@ class TestMockModel(unittest.TestCase):
         self.model = MockModel()
 
         config_dir = pathlib.Path(__file__).parents[0]
-
         self.model.configure(config_dir, "harrisLUT")
 
     def test_configure(self):
@@ -52,6 +51,24 @@ class TestMockModel(unittest.TestCase):
         self.model.temperature["exhaust"] = [99, 99]
 
         self.assertTrue(self.model.is_cell_temperature_high())
+
+    def test_fault_actuator_power_not_on(self):
+
+        self.model.fault()
+        self.assertFalse(self.model.error_cleared)
+        self.assertFalse(self.model.force_balance_system_status)
+
+    def test_fault_actuator_power_on(self):
+
+        # Turn on the power and the switch should work
+        self.model.actuator_power_on = True
+        self.assertTrue(self.model.switch_force_balance_system(True))
+        self.assertTrue(self.model.force_balance_system_status)
+
+        # Fault the model
+        self.model.fault()
+        self.assertFalse(self.model.error_cleared)
+        self.assertFalse(self.model.force_balance_system_status)
 
     def test_switch_force_balance_system(self):
 
@@ -290,6 +307,10 @@ class TestMockModel(unittest.TestCase):
         self.assertAlmostEqual(self.model.tangent_forces["lutGravity"][0], 0)
         self.assertAlmostEqual(self.model.tangent_forces["lutGravity"][1], 780.89259849)
 
+        np.testing.assert_array_equal(
+            self.model.tangent_forces["lutTemperature"], np.array([])
+        )
+
     def test_force_dynamics_in_position(self):
 
         demand = np.array([1, 2])
@@ -323,9 +344,12 @@ class TestMockModel(unittest.TestCase):
         # This should fail
         self.assertFalse(self.model.handle_position_mirror(mirror_position_set_point))
 
-        # This should succeed
+        # This should fail again
         self.model.actuator_power_on = True
+        self.assertFalse(self.model.handle_position_mirror(mirror_position_set_point))
 
+        # This should succeed in the final
+        self.model.switch_force_balance_system(True)
         result = self.model.handle_position_mirror(mirror_position_set_point)
 
         self.assertTrue(result)

@@ -26,8 +26,9 @@ import copy
 
 from lsst.ts import salobj
 from lsst.ts import tcpip
+from lsst.ts.utils import make_done_future
 
-from . import MsgType, write_json_packet
+from . import MsgType, write_json_packet, check_queue_size
 
 __all__ = ["TcpClient"]
 
@@ -41,9 +42,13 @@ class TcpClient:
         Host address.
     port : `int`
         Port to connect.
+    timeout_in_second : `float`, optional
+        Read timeout in second. (the default is 0.05)
     log : `logging.Logger` or None, optional
         A logger. If None, a logger will be instantiated. (the default is
         None)
+    sequence_generator : `generator` or `None`, optional
+        Sequence generator. (the default is None)
     maxsize_queue : `int`, optional
         Maximum size of queue. (the default is 1000)
 
@@ -59,13 +64,23 @@ class TcpClient:
         Reader of socker.
     writer : `asyncio.StreamWriter` or None
         Writer of the socket.
+    timeout : `float`
+        Read timeout in second.
+    last_sequence_id : `int`
+        Last sequence ID of command.
     queue : `asyncio.Queue`
         Queue of the message.
     """
 
-    TIMEOUT_IN_SECOND = 0.05
-
-    def __init__(self, host, port, log=None, maxsize_queue=1000):
+    def __init__(
+        self,
+        host,
+        port,
+        timeout_in_second=0.05,
+        log=None,
+        sequence_generator=None,
+        maxsize_queue=1000,
+    ):
 
         # Connection information
         self.host = host
@@ -80,15 +95,22 @@ class TcpClient:
         self.reader = None
         self.writer = None
 
-        # Unique ID
-        self._uniq_id = salobj.index_generator()
+        self.timeout = timeout_in_second
+
+        # Sequence ID generator
+        self._sequence_id_generator = (
+            sequence_generator
+            if sequence_generator is not None
+            else salobj.index_generator()
+        )
+        self.last_sequence_id = -1
 
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))
 
         # Monitor loop task (asyncio.Future)
-        self._monitor_loop_task = salobj.make_done_future()
+        self._monitor_loop_task = make_done_future()
 
-    async def connect(self, connect_retry_interval=1.0):
+    async def connect(self, connect_retry_interval=1.0, timeout=10.0):
         """Connect to the server.
 
         Parameters
@@ -96,14 +118,20 @@ class TcpClient:
         connect_retry_interval : `float`, optional
             How long to wait before trying to reconnect when connection fails.
             (default is 1.0)
+        timeout : `float`, optional
+            Timeout in second. This value should be larger than the
+            connect_retry_interval. (default is 10.0)
 
-        Notes
-        -----
-        This will wait forever for a connection.
+        Raises
+        ------
+        asyncio.TimeoutError
+            Connection timeout in the timeout period.
         """
 
-        self.log.info("Open the connection.")
+        self.log.info("Try to open the connection.")
 
+        retry_times_max = timeout // connect_retry_interval
+        retry_times = 0
         while not self.is_connected():
 
             try:
@@ -113,6 +141,10 @@ class TcpClient:
 
             except ConnectionRefusedError:
                 await asyncio.sleep(connect_retry_interval)
+
+                retry_times += 1
+                if retry_times >= retry_times_max:
+                    raise asyncio.TimeoutError("Connection timeout.")
 
         self.log.info("Connection is on.")
 
@@ -159,7 +191,7 @@ class TcpClient:
         try:
             data = await asyncio.wait_for(
                 self.reader.readuntil(separator=tcpip.TERMINATOR),
-                self.TIMEOUT_IN_SECOND,
+                self.timeout,
             )
 
             if data is not None:
@@ -167,24 +199,19 @@ class TcpClient:
                 msg = json.loads(data_decode)
                 self.queue.put_nowait(msg)
 
-                self._check_queue_size()
+                check_queue_size(self.queue, self.log)
 
         except asyncio.TimeoutError:
-            await asyncio.sleep(self.TIMEOUT_IN_SECOND)
+            await asyncio.sleep(self.timeout)
 
         except json.JSONDecodeError:
             self.log.debug(f"Can not decode the message: {data_decode}.")
 
+        except asyncio.QueueFull:
+            self.log.exception("Internal queue is full.")
+
         except asyncio.IncompleteReadError:
             raise
-
-    def _check_queue_size(self):
-        """Check the size of queue and log the information if needed."""
-
-        queue_size = self.queue.qsize()
-        maxsize = self.queue.maxsize
-        if queue_size > maxsize // 2:
-            self.log.info(f"Size of queue is: {queue_size}/{maxsize}.")
 
     async def _basic_close(self):
         """Cancel the monitor loop and close the connection."""
@@ -268,7 +295,9 @@ class TcpClient:
         """
 
         msg_details["id"] = "cmd_" + msg_name
-        msg_details["sequence_id"] = next(self._uniq_id)
+
+        self.last_sequence_id = next(self._sequence_id_generator)
+        msg_details["sequence_id"] = self.last_sequence_id
 
         return msg_details
 
