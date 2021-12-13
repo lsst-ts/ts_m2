@@ -277,14 +277,12 @@ class M2(salobj.ConfigurableCsc):
     async def _event_loop(self):
         """Update and output event information from component."""
 
-        self.log.debug("Begin to run the event loop from component.")
+        self.log.info("Begin to run the event loop from component.")
 
         while self._run_loops:
 
-            # Publish the SAL event
-            if not self.model.queue_event.empty():
-                message = self.model.queue_event.get_nowait()
-                self._publish_message_by_sal("evt_", message)
+            message = await self.model.queue_event.get()
+            self._publish_message_by_sal("evt_", message)
 
             # Fault the CSC if the controller is in Fault
             if (self.model.controller_state == salobj.State.FAULT) and (
@@ -295,10 +293,7 @@ class M2(salobj.ConfigurableCsc):
                     report="Controller's state is Fault.",
                 )
 
-            else:
-                await asyncio.sleep(self.timeout_in_second)
-
-        self.log.debug("Stop the running of event loop from component.")
+        self.log.info("Stop the running of event loop from component.")
 
     def _publish_message_by_sal(self, prefix_sal_topic, message):
         """Publish the message from component by SAL.
@@ -328,20 +323,14 @@ class M2(salobj.ConfigurableCsc):
     async def _telemetry_loop(self):
         """Update and output telemetry information from component."""
 
-        self.log.debug("Starting telemetry loop from component.")
+        self.log.info("Starting telemetry loop from component.")
 
         while self._run_loops:
 
-            if self.model.are_clients_connected() and (
-                not self.model.client_telemetry.queue.empty()
-            ):
-                message = self.model.client_telemetry.queue.get_nowait()
-                self._publish_message_by_sal("tel_", message)
+            message = await self.model.client_telemetry.queue.get()
+            self._publish_message_by_sal("tel_", message)
 
-            else:
-                await asyncio.sleep(self.timeout_in_second)
-
-        self.log.debug("Telemetry loop from component closed.")
+        self.log.info("Telemetry loop from component closed.")
 
     async def do_start(self, data):
         await self._connect_server(self.COMMAND_TIMEOUT)
