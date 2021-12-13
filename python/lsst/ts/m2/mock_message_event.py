@@ -78,6 +78,30 @@ class MockMessageEvent:
         msg = {"id": "detailedState", "detailedState": int(detailed_state)}
         await write_json_packet(self.writer, msg)
 
+    async def write_summary_state(self, summary_state):
+        """Write the message: summary state.
+
+        Parameters
+        ----------
+        summary_state : enum `lsst.ts.salobj.State`
+            M2 summary state.
+        """
+
+        msg = {"id": "summaryState", "summaryState": int(summary_state)}
+        await write_json_packet(self.writer, msg)
+
+    async def write_error_code(self, error_code):
+        """Write the message: error code.
+
+        Parameters
+        ----------
+        error_code : int
+            Error code.
+        """
+
+        msg = {"id": "errorCode", "errorCode": int(error_code)}
+        await write_json_packet(self.writer, msg)
+
     async def write_commandable_by_dds(self, state):
         """Write the message: commandable by DDS or not.
 

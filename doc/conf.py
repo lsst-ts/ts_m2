@@ -3,11 +3,20 @@
 This configuration only affects single-package Sphinx documentation builds.
 """
 
-from documenteer.sphinxconfig.stackconf import build_package_configs
+from documenteer.conf.pipelinespkg import *
 import lsst.ts.m2
 
+project = "ts_m2"
+html_theme_options["logotext"] = project
+html_title = project
+html_short_title = project
+doxylink = {}  # Avoid warning: Could not find tag file _doxygen/doxygen.tag
 
-_g = globals()
-_g.update(
-    build_package_configs(project_name="ts_m2", version=lsst.ts.m2.version.__version__)
-)
+intersphinx_mapping["ts_xml"] = ("https://ts-xml.lsst.io", None)
+intersphinx_mapping["ts_salobj"] = ("https://ts-salobj.lsst.io", None)
+
+# Support the sphinx extension of plantuml
+extensions.append("sphinxcontrib.plantuml")
+
+# Put the path to plantuml.jar
+plantuml = "java -jar /home/saluser/plantuml.jar"

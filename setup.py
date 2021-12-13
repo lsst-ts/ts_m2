@@ -27,7 +27,7 @@ setuptools.setup(
     package_dir={"": "python"},
     packages=setuptools.find_namespace_packages(where="python"),
     package_data={"": ["*.rst", "*.yaml"]},
-    scripts=["bin.src/run_mtm2.py"],
+    scripts=["bin/run_mtm2.py"],
     tests_require=tests_require,
     extras_require={"dev": dev_requires},
     license="GPL",

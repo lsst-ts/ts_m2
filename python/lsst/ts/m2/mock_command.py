@@ -21,6 +21,7 @@
 
 import asyncio
 
+from lsst.ts import salobj
 from lsst.ts.idl.enums import MTM2
 
 from . import DetailedState, CommandStatus
@@ -58,12 +59,15 @@ class MockCommand:
         if not command_success:
             model.actuator_power_on = False
 
+        await message_event.write_m2_assembly_in_position(False)
         await message_event.write_force_balance_system_status(
             model.force_balance_system_status
         )
 
         # Simulate the real hardware behavior
         await asyncio.sleep(5)
+
+        await message_event.write_summary_state(salobj.State.ENABLED)
 
         return (
             model,
@@ -97,6 +101,8 @@ class MockCommand:
             model.force_balance_system_status
         )
 
+        await message_event.write_summary_state(salobj.State.DISABLED)
+
         return model, CommandStatus.Success
 
     async def standby(self, message, model, message_event):
@@ -118,6 +124,8 @@ class MockCommand:
         `CommandStatus`
             Status of command execution.
         """
+
+        await message_event.write_summary_state(salobj.State.STANDBY)
 
         return model, CommandStatus.Success
 
@@ -141,6 +149,8 @@ class MockCommand:
             Status of command execution.
         """
 
+        await message_event.write_summary_state(salobj.State.DISABLED)
+
         return model, CommandStatus.Success
 
     async def enter_control(self, message, model, message_event):
@@ -162,6 +172,8 @@ class MockCommand:
         `CommandStatus`
             Status of command execution.
         """
+
+        await message_event.write_summary_state(salobj.State.STANDBY)
 
         return model, CommandStatus.Success
 
@@ -192,6 +204,8 @@ class MockCommand:
         await asyncio.sleep(0.01)
         await message_event.write_detailed_state(DetailedState.Available)
 
+        await message_event.write_summary_state(salobj.State.OFFLINE)
+
         return model, CommandStatus.Success
 
     async def apply_forces(self, message, model, message_event):
@@ -216,9 +230,15 @@ class MockCommand:
             Status of command execution.
         """
 
-        model.apply_forces(message["axial"], message["tangent"])
+        command_status = CommandStatus.Success
+        try:
+            model.apply_forces(message["axial"], message["tangent"])
+            await message_event.write_m2_assembly_in_position(False)
 
-        return model, CommandStatus.Success
+        except RuntimeError:
+            command_status = CommandStatus.Fail
+
+        return model, command_status
 
     async def position_mirror(self, message, model, message_event):
         """Position the mirror.
@@ -251,6 +271,8 @@ class MockCommand:
 
         try:
             command_success = model.handle_position_mirror(mirror_position_set_point)
+            await message_event.write_m2_assembly_in_position(False)
+
         except RuntimeError:
             command_success = False
 
@@ -284,6 +306,7 @@ class MockCommand:
         """
 
         model.reset_force_offsets()
+        await message_event.write_m2_assembly_in_position(False)
 
         return model, CommandStatus.Success
 
@@ -308,8 +331,9 @@ class MockCommand:
         """
 
         model.clear_errors()
+        model, command_status = await self.exit_control(message, model, message_event)
 
-        return model, CommandStatus.Success
+        return model, command_status
 
     async def switch_force_balance_system(self, message, model, message_event):
         """Switch the force balance system.
@@ -393,12 +417,19 @@ class MockCommand:
             Status of command execution.
         """
 
-        model.temperature["ring"] = message["ring"]
-        model.temperature["intake"] = message["intake"]
-        model.temperature["exhaust"] = message["exhaust"]
+        # The ref can only be a single value at this moment
+        # After the M2 server code is updated, we will change the behavior here
+        offset = message["ring"].copy()
+        offset.extend(message["intake"])
+        offset.extend(message["exhaust"])
 
-        await message_event.write_temperature_offset(
-            message["ring"], message["intake"], message["exhaust"]
-        )
+        command_status = CommandStatus.Success
+        if len(set(offset)) == 1:
+            model.temperature["ref"] = offset[0]
+            await message_event.write_temperature_offset(
+                message["ring"], message["intake"], message["exhaust"]
+            )
+        else:
+            command_status = CommandStatus.Fail
 
-        return model, CommandStatus.Success
+        return model, command_status
