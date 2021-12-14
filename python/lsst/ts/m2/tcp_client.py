@@ -51,6 +51,8 @@ class TcpClient:
         Sequence generator. (the default is None)
     maxsize_queue : `int`, optional
         Maximum size of queue. (the default is 1000)
+    name : `str`, optional
+        Name of the tcp-client. Used for logging/debugging purposes.
 
     Attributes
     ----------
@@ -58,6 +60,8 @@ class TcpClient:
         Host address.
     port : `int`
         Port to connect.
+    name : `str`
+        Name of the tcp-client.
     log : `logging.Logger`
         A logger.
     reader : `asyncio.StreamReader` or None
@@ -80,11 +84,13 @@ class TcpClient:
         log=None,
         sequence_generator=None,
         maxsize_queue=1000,
+        name="tcp-client",
     ):
 
         # Connection information
         self.host = host
         self.port = int(port)
+        self.name = name
 
         # Set the logger
         if log is None:
