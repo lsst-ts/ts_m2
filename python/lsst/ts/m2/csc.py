@@ -203,20 +203,18 @@ class M2(salobj.ConfigurableCsc):
 
     async def close_tasks(self):
 
+        await self.model.close()
+
+        if self._mock_server is not None:
+            await self._mock_server.close()
+            self._mock_server = None
+
         try:
             await self.stop_loops()
-
         except Exception:
             self.log.exception("Exception while stopping the loops. Ignoring...")
 
-        finally:
-            await self.model.close()
-
-            if self._mock_server is not None:
-                await self._mock_server.close()
-                self._mock_server = None
-
-            await super().close_tasks()
+        await super().close_tasks()
 
     async def stop_loops(self):
         """Stop the loops."""
@@ -281,10 +279,14 @@ class M2(salobj.ConfigurableCsc):
 
         while self._run_loops:
 
+            message = (
+                self.model.queue_event.get_nowait()
+                if not self.model.queue_event.empty()
+                else await self.model.queue_event.get()
+            )
+
             # Publish the SAL event
-            if not self.model.queue_event.empty():
-                message = self.model.queue_event.get_nowait()
-                self._publish_message_by_sal("evt_", message)
+            self._publish_message_by_sal("evt_", message)
 
             # Fault the CSC if the controller is in Fault
             if (self.model.controller_state == salobj.State.FAULT) and (
@@ -330,18 +332,42 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Starting telemetry loop from component.")
 
+        messages_consumed = 0
+        messages_consumed_log_timer = asyncio.create_task(
+            asyncio.sleep(self.heartbeat_interval)
+        )
         while self._run_loops:
 
-            if self.model.are_clients_connected() and (
-                not self.model.client_telemetry.queue.empty()
-            ):
-                message = self.model.client_telemetry.queue.get_nowait()
+            if self.model.are_clients_connected():
+                message = (
+                    self.model.client_telemetry.queue.get_nowait()
+                    if not self.model.client_telemetry.queue.empty()
+                    else await self.model.client_telemetry.queue.get()
+                )
                 self._publish_message_by_sal("tel_", message)
+                messages_consumed += 1
+                if messages_consumed_log_timer.done():
+                    self.log.debug(
+                        f"Consumed {messages_consumed/self.heartbeat_interval} messages/s."
+                    )
+                    messages_consumed = 0
+                    messages_consumed_log_timer = asyncio.create_task(
+                        asyncio.sleep(self.heartbeat_interval)
+                    )
 
             else:
+                self.log.debug(
+                    f"Clients not connected. Waiting {self.timeout_in_second}s..."
+                )
                 await asyncio.sleep(self.timeout_in_second)
 
         self.log.debug("Telemetry loop from component closed.")
+
+    async def begin_start(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+
+        self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
+        return await super().begin_start(data)
 
     async def do_start(self, data):
         await self._connect_server(self.COMMAND_TIMEOUT)
@@ -393,6 +419,11 @@ class M2(salobj.ConfigurableCsc):
                 f"Timeount in connection. Host: {host}, ports: {port_command} and {port_telemetry}"
             )
 
+    async def begin_standby(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+        self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
+        return await super().begin_standby(data)
+
     async def do_standby(self, data):
 
         # Try to transition the controller's state to OFFLINE state before
@@ -415,7 +446,14 @@ class M2(salobj.ConfigurableCsc):
         # Disconnect from the server
         await self.model.close()
 
+        await self.stop_loops()
+
         await super().do_standby(data)
+
+    async def begin_enable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+        self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
+        return await super().begin_enable(data)
 
     async def do_enable(self, data):
 
@@ -425,15 +463,19 @@ class M2(salobj.ConfigurableCsc):
             salobj.State.OFFLINE, "enterControl", timeout
         )
 
-        # Do the acknowledgement when the controller is in STANDBY state
-        self.cmd_enable.ack_in_progress(data, timeout=timeout)
-
         await self._transition_controller_state(salobj.State.STANDBY, "start", timeout)
         await self._transition_controller_state(
             salobj.State.DISABLED, "enable", timeout
         )
 
         await super().do_enable(data)
+
+    async def begin_disable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+        # multiply timeout by 3 as this is the number of commands executed with
+        # this timeout.
+        self.cmd_disable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT * 3)
+
+        return await super().begin_disable(data)
 
     async def do_disable(self, data):
 
@@ -442,9 +484,6 @@ class M2(salobj.ConfigurableCsc):
         await self._transition_controller_state(
             salobj.State.ENABLED, "disable", timeout
         )
-
-        # Do the acknowledgement when the controller is in DISABLED state
-        self.cmd_disable.ack_in_progress(data, timeout=timeout)
 
         await self._transition_controller_state(
             salobj.State.DISABLED, "standby", timeout
@@ -515,6 +554,8 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_applyForces.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
         message_name = "applyForces"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -533,6 +574,8 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_positionMirror.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
         message_name = "positionMirror"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -553,6 +596,8 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_resetForceOffsets.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
         message_name = "resetForceOffsets"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -600,6 +645,10 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_selectInclinationSource.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
         message_name = "selectInclinationSource"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -619,6 +668,10 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_setTemperatureOffset.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
         message_name = "setTemperatureOffset"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -637,6 +690,10 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_switchForceBalanceSystem.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
         message_name = "switchForceBalanceSystem"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 

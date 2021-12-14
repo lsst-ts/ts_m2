@@ -44,7 +44,7 @@ async def write_json_packet(writer, msg_input):
     await writer.drain()
 
 
-def check_queue_size(queue, log):
+def check_queue_size(queue, log, name=""):
     """Check the size of queue and log the information if needed.
 
     Parameters
@@ -53,6 +53,8 @@ def check_queue_size(queue, log):
         Queue.
     log : `logging.Logger`
         A logger.
+    name : `str`, optional
+        Additional string to add to the log message for tracking purposes.
 
     Returns
     -------
@@ -64,7 +66,7 @@ def check_queue_size(queue, log):
     maxsize = queue.maxsize
 
     if queue_size > maxsize // 2:
-        log.info(f"Size of queue is: {queue_size}/{maxsize}.")
+        log.info(f"[{name}] Size of queue is: {queue_size}/{maxsize}.")
         return True
 
     else:

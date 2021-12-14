@@ -51,6 +51,8 @@ class TcpClient:
         Sequence generator. (the default is None)
     maxsize_queue : `int`, optional
         Maximum size of queue. (the default is 1000)
+    name : `str`, optional
+        Name of the tcp-client. Used for logging/debugging purposes.
 
     Attributes
     ----------
@@ -58,6 +60,8 @@ class TcpClient:
         Host address.
     port : `int`
         Port to connect.
+    name : `str`
+        Name of the tcp-client.
     log : `logging.Logger`
         A logger.
     reader : `asyncio.StreamReader` or None
@@ -70,6 +74,11 @@ class TcpClient:
         Last sequence ID of command.
     queue : `asyncio.Queue`
         Queue of the message.
+    queue_full_log_interval : `float`
+        When queue is full, how long to wait until logging condition again
+        (in seconds)?
+    queue_full_messages_lost : `int`
+        How many messages were lost while queue was full.
     """
 
     def __init__(
@@ -80,11 +89,13 @@ class TcpClient:
         log=None,
         sequence_generator=None,
         maxsize_queue=1000,
+        name="tcp-client",
     ):
 
         # Connection information
         self.host = host
         self.port = int(port)
+        self.name = name
 
         # Set the logger
         if log is None:
@@ -107,8 +118,15 @@ class TcpClient:
 
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))
 
+        self.queue_full_log_interval = 1.0  # seconds
+        self.queue_full_messages_lost = 0
+
         # Monitor loop task (asyncio.Future)
         self._monitor_loop_task = make_done_future()
+
+        # Timer for queue full log message
+        self._timer_queue_full_task = make_done_future()
+        self._timer_check_queue_size_task = make_done_future()
 
     async def connect(self, connect_retry_interval=1.0, timeout=10.0):
         """Connect to the server.
@@ -199,7 +217,11 @@ class TcpClient:
                 msg = json.loads(data_decode)
                 self.queue.put_nowait(msg)
 
-                check_queue_size(self.queue, self.log)
+                if self._timer_check_queue_size_task.done():
+                    if check_queue_size(self.queue, self.log, self.name):
+                        self._timer_check_queue_size_task = asyncio.create_task(
+                            asyncio.sleep(self.queue_full_log_interval)
+                        )
 
         except asyncio.TimeoutError:
             await asyncio.sleep(self.timeout)
@@ -208,7 +230,16 @@ class TcpClient:
             self.log.debug(f"Can not decode the message: {data_decode}.")
 
         except asyncio.QueueFull:
-            self.log.exception("Internal queue is full.")
+            self.queue_full_messages_lost += 1
+            if self._timer_queue_full_task.done():
+                self.log.exception(
+                    f"{self.name}::Internal queue is full. "
+                    f"Lost {self.queue_full_messages_lost} messages since last report."
+                )
+                self.queue_full_messages_lost = 0
+                self._timer_queue_full_task = asyncio.create_task(
+                    asyncio.sleep(self.queue_full_log_interval)
+                )
 
         except asyncio.IncompleteReadError:
             raise
