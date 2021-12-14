@@ -279,10 +279,14 @@ class M2(salobj.ConfigurableCsc):
 
         while self._run_loops:
 
+            message = (
+                self.model.queue_event.get_nowait()
+                if not self.model.queue_event.empty()
+                else await self.model.queue_event.get()
+            )
+
             # Publish the SAL event
-            if not self.model.queue_event.empty():
-                message = self.model.queue_event.get_nowait()
-                self._publish_message_by_sal("evt_", message)
+            self._publish_message_by_sal("evt_", message)
 
             # Fault the CSC if the controller is in Fault
             if (self.model.controller_state == salobj.State.FAULT) and (
