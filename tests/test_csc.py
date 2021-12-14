@@ -21,7 +21,6 @@
 
 import asyncio
 import unittest
-import asynctest
 
 import numpy as np
 
@@ -33,7 +32,7 @@ from lsst.ts.idl.enums.MTM2 import InclinationTelemetrySource
 STD_TIMEOUT = 10
 
 
-class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
+class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
     def basic_make_csc(self, initial_state, config_dir, simulation_mode):
         return M2(
             config_dir=config_dir,
@@ -62,7 +61,7 @@ class TestM2CSC(salobj.BaseCscTestCase, asynctest.TestCase):
         # Wait for some time to publish the telemetry of MTMount
         await asyncio.sleep(1)
 
-    async def tearDown(self):
+    async def asyncTearDown(self) -> None:
         if self.csc_mtmount is not None:
             await self.csc_mtmount.close()
 
