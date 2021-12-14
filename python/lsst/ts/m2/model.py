@@ -120,6 +120,7 @@ class Model:
             log=self.log,
             sequence_generator=sequence_generator,
             maxsize_queue=maxsize_queue,
+            name="command",
         )
         self.client_telemetry = TcpClient(
             host,
@@ -127,6 +128,7 @@ class Model:
             timeout_in_second=self.timeout,
             log=self.log,
             maxsize_queue=maxsize_queue,
+            name="telemetry",
         )
 
         # Create the tasks
