@@ -203,20 +203,18 @@ class M2(salobj.ConfigurableCsc):
 
     async def close_tasks(self):
 
+        await self.model.close()
+
+        if self._mock_server is not None:
+            await self._mock_server.close()
+            self._mock_server = None
+
         try:
             await self.stop_loops()
-
         except Exception:
             self.log.exception("Exception while stopping the loops. Ignoring...")
 
-        finally:
-            await self.model.close()
-
-            if self._mock_server is not None:
-                await self._mock_server.close()
-                self._mock_server = None
-
-            await super().close_tasks()
+        await super().close_tasks()
 
     async def stop_loops(self):
         """Stop the loops."""
