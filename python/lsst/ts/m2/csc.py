@@ -413,6 +413,8 @@ class M2(salobj.ConfigurableCsc):
         # Disconnect from the server
         await self.model.close()
 
+        await self.stop_loops()
+
         await super().do_standby(data)
 
     async def do_enable(self, data):
