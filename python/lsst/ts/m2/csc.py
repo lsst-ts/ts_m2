@@ -363,6 +363,12 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Telemetry loop from component closed.")
 
+    async def begin_start(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+
+        self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
+        return await super().begin_start(data)
+
     async def do_start(self, data):
         await self._connect_server(self.COMMAND_TIMEOUT)
 
@@ -413,6 +419,11 @@ class M2(salobj.ConfigurableCsc):
                 f"Timeount in connection. Host: {host}, ports: {port_command} and {port_telemetry}"
             )
 
+    async def begin_standby(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+        self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
+        return await super().begin_standby(data)
+
     async def do_standby(self, data):
 
         # Try to transition the controller's state to OFFLINE state before
@@ -439,6 +450,11 @@ class M2(salobj.ConfigurableCsc):
 
         await super().do_standby(data)
 
+    async def begin_enable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+        self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
+        return await super().begin_enable(data)
+
     async def do_enable(self, data):
 
         timeout = self.COMMAND_TIMEOUT
@@ -447,15 +463,17 @@ class M2(salobj.ConfigurableCsc):
             salobj.State.OFFLINE, "enterControl", timeout
         )
 
-        # Do the acknowledgement when the controller is in STANDBY state
-        self.cmd_enable.ack_in_progress(data, timeout=timeout)
-
         await self._transition_controller_state(salobj.State.STANDBY, "start", timeout)
         await self._transition_controller_state(
             salobj.State.DISABLED, "enable", timeout
         )
 
         await super().do_enable(data)
+
+    async def begin_disable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+        self.cmd_disable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
+        return await super().begin_disable(data)
 
     async def do_disable(self, data):
 
@@ -464,9 +482,6 @@ class M2(salobj.ConfigurableCsc):
         await self._transition_controller_state(
             salobj.State.ENABLED, "disable", timeout
         )
-
-        # Do the acknowledgement when the controller is in DISABLED state
-        self.cmd_disable.ack_in_progress(data, timeout=timeout)
 
         await self._transition_controller_state(
             salobj.State.DISABLED, "standby", timeout
@@ -537,6 +552,8 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_applyForces.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
         message_name = "applyForces"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -555,6 +572,8 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_positionMirror.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
         message_name = "positionMirror"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -575,6 +594,8 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_resetForceOffsets.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
         message_name = "resetForceOffsets"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -622,6 +643,10 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_selectInclinationSource.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
         message_name = "selectInclinationSource"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -641,6 +666,10 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_setTemperatureOffset.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
         message_name = "setTemperatureOffset"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
@@ -659,6 +688,10 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
+        self.cmd_switchForceBalanceSystem.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
         message_name = "switchForceBalanceSystem"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
