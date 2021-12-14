@@ -74,6 +74,10 @@ class TcpClient:
         Last sequence ID of command.
     queue : `asyncio.Queue`
         Queue of the message.
+    queue_full_log_interval : `float`
+        When queue is full, how long to wait until logging condition again?
+    queue_full_messages_lost : `int`
+        How many messages were lost while queue was full.
     """
 
     def __init__(
@@ -113,8 +117,15 @@ class TcpClient:
 
         self.queue = asyncio.Queue(maxsize=int(maxsize_queue))
 
+        self.queue_full_log_interval = 1.0
+        self.queue_full_messages_lost = 0
+
         # Monitor loop task (asyncio.Future)
         self._monitor_loop_task = make_done_future()
+
+        # Timer for queue full log message
+        self._timer_queue_full = make_done_future()
+        self._timer_check_queue_size = make_done_future()
 
     async def connect(self, connect_retry_interval=1.0, timeout=10.0):
         """Connect to the server.
@@ -205,7 +216,11 @@ class TcpClient:
                 msg = json.loads(data_decode)
                 self.queue.put_nowait(msg)
 
-                check_queue_size(self.queue, self.log)
+                if self._timer_check_queue_size.done():
+                    if check_queue_size(self.queue, self.log, self.name):
+                        self._timer_check_queue_size = asyncio.create_task(
+                            asyncio.sleep(self.queue_full_log_interval)
+                        )
 
         except asyncio.TimeoutError:
             await asyncio.sleep(self.timeout)
@@ -214,7 +229,16 @@ class TcpClient:
             self.log.debug(f"Can not decode the message: {data_decode}.")
 
         except asyncio.QueueFull:
-            self.log.exception("Internal queue is full.")
+            self.queue_full_messages_lost += 1
+            if self._timer_queue_full.done():
+                self.log.exception(
+                    f"{self.name}::Internal queue is full. "
+                    f"Lost {self.queue_full_messages_lost} messages since last report."
+                )
+                self.queue_full_messages_lost = 0
+                self._timer_queue_full = asyncio.create_task(
+                    asyncio.sleep(self.queue_full_log_interval)
+                )
 
         except asyncio.IncompleteReadError:
             raise
