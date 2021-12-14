@@ -332,15 +332,33 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Starting telemetry loop from component.")
 
+        messages_consumed = 0
+        messages_consumed_log_timer = asyncio.create_task(
+            asyncio.sleep(self.heartbeat_interval)
+        )
         while self._run_loops:
 
-            if self.model.are_clients_connected() and (
-                not self.model.client_telemetry.queue.empty()
-            ):
-                message = self.model.client_telemetry.queue.get_nowait()
+            if self.model.are_clients_connected():
+                message = (
+                    self.model.client_telemetry.queue.get_nowait()
+                    if not self.model.client_telemetry.queue.empty()
+                    else await self.model.client_telemetry.queue.get()
+                )
                 self._publish_message_by_sal("tel_", message)
+                messages_consumed += 1
+                if messages_consumed_log_timer.done():
+                    self.log.debug(
+                        f"Consumed {messages_consumed/self.heartbeat_interval} messages/s."
+                    )
+                    messages_consumed = 0
+                    messages_consumed_log_timer = asyncio.create_task(
+                        asyncio.sleep(self.heartbeat_interval)
+                    )
 
             else:
+                self.log.debug(
+                    f"Clients not connected. Waiting {self.timeout_in_second}s..."
+                )
                 await asyncio.sleep(self.timeout_in_second)
 
         self.log.debug("Telemetry loop from component closed.")
