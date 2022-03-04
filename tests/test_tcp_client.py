@@ -27,8 +27,8 @@ import socket
 import logging
 import json
 
-from lsst.ts import salobj
 from lsst.ts import tcpip
+from lsst.ts.utils import index_generator
 from lsst.ts.m2 import MsgType, TcpClient, write_json_packet
 
 
@@ -74,7 +74,7 @@ class TestTcpClient(unittest.IsolatedAsyncioTestCase):
         """
 
         # Create a sequence generator and run it for a couple times first
-        sequence_generator = salobj.index_generator()
+        sequence_generator = index_generator()
         for count in range(self.times_previous_command):
             next(sequence_generator)
 
