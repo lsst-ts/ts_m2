@@ -2,10 +2,10 @@
 Version History
 ===============
 
-v0.4.2
+v0.5.0
 ------
 
-* Adapt the **ts_salobj** v7.0.0.
+* Update to salobj 7.
 * Rename **README.rst** to **README.md** and update the related syntax.
 
 v0.4.1
