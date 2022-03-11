@@ -41,6 +41,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         )
 
     def setUp(self):
+        super().setUp()
         self.csc_mtmount = None
 
     async def _simulate_csc_mount(self, elevation_angle):
@@ -55,8 +56,8 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         self.csc_mtmount = salobj.Controller("MTMount")
         await self.csc_mtmount.start_task
 
-        self.csc_mtmount.tel_elevation.set_put(actualPosition=elevation_angle)
-        self.csc_mtmount.evt_elevationInPosition.set_put(inPosition=True)
+        await self.csc_mtmount.tel_elevation.set_write(actualPosition=elevation_angle)
+        await self.csc_mtmount.evt_elevationInPosition.set_write(inPosition=True)
 
         # Wait for some time to publish the telemetry of MTMount
         await asyncio.sleep(1)

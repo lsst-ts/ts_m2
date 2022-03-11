@@ -26,7 +26,7 @@ import time
 
 from lsst.ts import tcpip
 from lsst.ts import salobj
-from lsst.ts.utils import make_done_future
+from lsst.ts.utils import make_done_future, index_generator
 
 from .config_schema import CONFIG_SCHEMA
 from . import MsgType, ErrorCode, Model, MockServer, Translator
@@ -115,7 +115,7 @@ class M2(salobj.ConfigurableCsc):
         self._host = host
 
         # Sequence generator
-        self._sequence_generator = salobj.index_generator()
+        self._sequence_generator = index_generator()
 
         # Command port number of the TCP/IP interface
         self._port_command = port_command
@@ -286,13 +286,13 @@ class M2(salobj.ConfigurableCsc):
             )
 
             # Publish the SAL event
-            self._publish_message_by_sal("evt_", message)
+            await self._publish_message_by_sal("evt_", message)
 
             # Fault the CSC if the controller is in Fault
             if (self.model.controller_state == salobj.State.FAULT) and (
                 self.summary_state != salobj.State.FAULT
             ):
-                self.fault(
+                await self.fault(
                     code=ErrorCode.ControllerInFault,
                     report="Controller's state is Fault.",
                 )
@@ -302,7 +302,7 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Stop the running of event loop from component.")
 
-    def _publish_message_by_sal(self, prefix_sal_topic, message):
+    async def _publish_message_by_sal(self, prefix_sal_topic, message):
         """Publish the message from component by SAL.
 
         Parameters
@@ -320,7 +320,7 @@ class M2(salobj.ConfigurableCsc):
 
         if hasattr(self, sal_topic_name):
             message_payload.pop("id")
-            getattr(self, sal_topic_name).set_put(**message_payload)
+            await getattr(self, sal_topic_name).set_write(**message_payload)
         else:
             message_name_original = message["id"]
             self.log.warning(
@@ -344,7 +344,7 @@ class M2(salobj.ConfigurableCsc):
                     if not self.model.client_telemetry.queue.empty()
                     else await self.model.client_telemetry.queue.get()
                 )
-                self._publish_message_by_sal("tel_", message)
+                await self._publish_message_by_sal("tel_", message)
                 messages_consumed += 1
                 if messages_consumed_log_timer.done():
                     self.log.debug(
@@ -365,7 +365,7 @@ class M2(salobj.ConfigurableCsc):
 
     async def begin_start(self, data: salobj.type_hints.BaseDdsDataType) -> None:
 
-        self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         return await super().begin_start(data)
 
@@ -420,7 +420,7 @@ class M2(salobj.ConfigurableCsc):
             )
 
     async def begin_standby(self, data: salobj.type_hints.BaseDdsDataType) -> None:
-        self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         return await super().begin_standby(data)
 
@@ -451,7 +451,7 @@ class M2(salobj.ConfigurableCsc):
         await super().do_standby(data)
 
     async def begin_enable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
-        self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         return await super().begin_enable(data)
 
@@ -473,7 +473,7 @@ class M2(salobj.ConfigurableCsc):
     async def begin_disable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
         # multiply timeout by 3 as this is the number of commands executed with
         # this timeout.
-        self.cmd_disable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT * 3)
+        await self.cmd_disable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT * 3)
 
         return await super().begin_disable(data)
 
@@ -541,7 +541,7 @@ class M2(salobj.ConfigurableCsc):
         except OSError:
             await self.model.close()
 
-            self.fault(
+            await self.fault(
                 code=ErrorCode.NoConnection,
                 report="Lost the TCP/IP connection.",
             )
@@ -554,7 +554,7 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_applyForces.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_applyForces.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         message_name = "applyForces"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
@@ -574,7 +574,9 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_positionMirror.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_positionMirror.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
 
         message_name = "positionMirror"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
@@ -596,7 +598,9 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_resetForceOffsets.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_resetForceOffsets.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
 
         message_name = "resetForceOffsets"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
@@ -632,7 +636,7 @@ class M2(salobj.ConfigurableCsc):
         except OSError:
             await self.model.close()
 
-            self.fault(
+            await self.fault(
                 code=ErrorCode.NoConnection,
                 report="Lost the TCP/IP connection.",
             )
@@ -645,7 +649,7 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_selectInclinationSource.ack_in_progress(
+        await self.cmd_selectInclinationSource.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
@@ -668,7 +672,7 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_setTemperatureOffset.ack_in_progress(
+        await self.cmd_setTemperatureOffset.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
@@ -690,7 +694,7 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_switchForceBalanceSystem.ack_in_progress(
+        await self.cmd_switchForceBalanceSystem.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
@@ -742,7 +746,7 @@ class M2(salobj.ConfigurableCsc):
         except OSError:
             await self.model.close()
 
-            self.fault(
+            await self.fault(
                 code=ErrorCode.NoConnection,
                 report="Lost the TCP/IP connection.",
             )

@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.5.0
+------
+
+* Update to salobj 7.
+* Rename **README.rst** to **README.md** and update the related syntax.
+
 v0.4.1
 ------
 * In `CSC`:

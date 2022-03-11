@@ -24,9 +24,8 @@ import asyncio
 import json
 import copy
 
-from lsst.ts import salobj
 from lsst.ts import tcpip
-from lsst.ts.utils import make_done_future
+from lsst.ts.utils import make_done_future, index_generator
 
 from . import MsgType, write_json_packet, check_queue_size
 
@@ -110,9 +109,7 @@ class TcpClient:
 
         # Sequence ID generator
         self._sequence_id_generator = (
-            sequence_generator
-            if sequence_generator is not None
-            else salobj.index_generator()
+            sequence_generator if sequence_generator is not None else index_generator()
         )
         self.last_sequence_id = -1
 
