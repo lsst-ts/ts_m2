@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.5.1
+------
+
+* Update the mechanism to overwrite the connection information.
+
 v0.5.0
 ------
 
