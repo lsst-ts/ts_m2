@@ -35,5 +35,18 @@ properties:
   lut_path:
     description: Relative location of the Look-Up Tables, with respect to configuration package.
     type: string
+  host:
+    description: >-
+      IP address of the TCP/IP interface.
+    type: string
+    format: hostname
+  port_command:
+    description: >-
+      Command port number of the TCP/IP interface.
+    type: integer
+  port_telemetry:
+    description: >-
+      Telemetry port number of the TCP/IP interface.
+    type: integer
 """
 )
