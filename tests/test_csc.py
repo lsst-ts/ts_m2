@@ -381,6 +381,28 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                         flush=True, timeout=STD_TIMEOUT
                     )
 
+    async def test_connection_monitor_loop(self):
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+
+            # Enter the Disabled state to construct the connection
+            await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
+            self.assertTrue(self.csc.model.are_clients_connected())
+
+            await asyncio.sleep(2)
+
+            await self.csc._mock_server.close()
+
+            # Sleep some time to make sure the CSC detects the connection is
+            # closed
+            await asyncio.sleep(2)
+
+            self.assertFalse(self.csc.model.are_clients_connected())
+            self.assertFalse(self.csc._mock_server.are_servers_connected())
+
+            self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
+
     async def test_applyForces_wrong_controller_state(self):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
