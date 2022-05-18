@@ -2,6 +2,14 @@
 Version History
 ===============
 
+v0.5.2
+------
+
+* Actively monitor the connection status.
+If the server closes the connection, M2 CSC will detect this and transition
+to the **Fault** state.
+If there is no new telemetry for some time, there will be the warning message.
+
 v0.5.1
 ------
 
