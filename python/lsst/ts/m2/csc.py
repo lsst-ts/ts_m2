@@ -88,7 +88,7 @@ class M2(salobj.ConfigurableCsc):
     COMMAND_TIMEOUT = 10
 
     # Maximum timeout to wait the telemetry in second
-    MAXIMUM_TIMEOUT_WAIT_TELEMETRY = 900
+    TELEMETRY_WAIT_TIMEOUT = 900
 
     def __init__(
         self,
@@ -234,23 +234,17 @@ class M2(salobj.ConfigurableCsc):
 
         self._run_loops = False
 
-        try:
-            await asyncio.wait_for(
-                self._task_telemetry_loop, timeout=self.stop_loop_timeout
-            )
-            await asyncio.wait_for(
-                self._task_event_loop, timeout=self.stop_loop_timeout
-            )
-            await asyncio.wait_for(
-                self._task_connection_monitor_loop, timeout=self.stop_loop_timeout
-            )
+        for task in (
+            self._task_telemetry_loop,
+            self._task_event_loop,
+            self._task_connection_monitor_loop,
+        ):
+            try:
+                await asyncio.wait_for(task, timeout=self.stop_loop_timeout)
+            except asyncio.TimeoutError:
+                self.log.debug("Timed out waiting for the loop to finish. Canceling.")
 
-        except asyncio.TimeoutError:
-            self.log.debug("Timed out waiting for the loops to finish. Canceling.")
-
-            self._task_telemetry_loop.cancel()
-            self._task_event_loop.cancel()
-            self._task_connection_monitor_loop.cancel()
+                task.cancel()
 
     async def handle_summary_state(self):
         """Handle summary state changes."""
@@ -283,13 +277,12 @@ class M2(salobj.ConfigurableCsc):
 
             self._run_loops = True
 
-            self.log.debug("Starting the event loop task.")
+            self.log.debug(
+                "Starting event, telemetry and connection monitor loop tasks."
+            )
+
             self._task_event_loop = asyncio.create_task(self._event_loop())
-
-            self.log.debug("Starting the telemetry loop task.")
             self._task_telemetry_loop = asyncio.create_task(self._telemetry_loop())
-
-            self.log.debug("Starting the connection monitor loop task.")
             self._task_connection_monitor_loop = asyncio.create_task(
                 self._connection_monitor_loop()
             )
@@ -354,7 +347,8 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Starting telemetry loop from component.")
 
-        time_wait_telemetry = 0
+        time_wait_telemetry = 0.0
+        is_telemetry_timed_out = False
 
         messages_consumed = 0
         messages_consumed_log_timer = asyncio.create_task(
@@ -364,17 +358,19 @@ class M2(salobj.ConfigurableCsc):
 
             if self.model.are_clients_connected():
 
-                # Give the warning if there is no new telemetry for some time
-                # already
-                if time_wait_telemetry >= self.MAXIMUM_TIMEOUT_WAIT_TELEMETRY:
-                    self.log.info(
+                if (
+                    time_wait_telemetry >= self.TELEMETRY_WAIT_TIMEOUT
+                    and not is_telemetry_timed_out
+                ):
+                    self.log.warning(
                         (
                             "No telemetry for more than "
-                            f"{self.MAXIMUM_TIMEOUT_WAIT_TELEMETRY} seconds "
+                            f"{self.TELEMETRY_WAIT_TIMEOUT } seconds "
                             "already. Is the internet OK?"
                         )
                     )
-                    time_wait_telemetry = 0
+                    time_wait_telemetry = 0.0
+                    is_telemetry_timed_out = True
 
                 # If there is no telemetry, sleep for some time
                 if self.model.client_telemetry.queue.empty():
@@ -383,7 +379,11 @@ class M2(salobj.ConfigurableCsc):
                     continue
 
                 # There is the telemetry to publish
-                time_wait_telemetry = 0
+                time_wait_telemetry = 0.0
+                if is_telemetry_timed_out:
+                    self.log.info("Receive the new telemetry again.")
+
+                is_telemetry_timed_out = False
 
                 message = self.model.client_telemetry.queue.get_nowait()
                 await self._publish_message_by_sal("tel_", message)
@@ -411,8 +411,8 @@ class M2(salobj.ConfigurableCsc):
 
         Parameters
         ----------
-        period : `float` or `int`
-            Period to check the connection status in second.
+        period : `float` or `int`, optional
+            Period to check the connection status in second. (the default is 1)
         """
 
         self.log.debug("Begin to run the connection monitor loop from component.")
@@ -423,10 +423,7 @@ class M2(salobj.ConfigurableCsc):
             if self.model.are_clients_connected():
                 were_clients_connected = True
             else:
-                if were_clients_connected and self.summary_state in (
-                    salobj.State.DISABLED,
-                    salobj.State.ENABLED,
-                ):
+                if were_clients_connected and self.disabled_or_enabled:
                     were_clients_connected = False
 
                     await self.model.close()
@@ -436,7 +433,6 @@ class M2(salobj.ConfigurableCsc):
                         report="Lost the TCP/IP connection.",
                     )
 
-            # Sleep a short time to reduce the CPU usage
             await asyncio.sleep(period)
 
         self.log.debug("Connection monitor loop from component closed.")

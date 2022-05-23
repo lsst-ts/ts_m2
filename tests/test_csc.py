@@ -390,13 +390,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
             self.assertTrue(self.csc.model.are_clients_connected())
 
-            await asyncio.sleep(2)
+            time_wait_connection_monitor_check = 2
+            await asyncio.sleep(time_wait_connection_monitor_check)
 
             await self.csc._mock_server.close()
 
             # Sleep some time to make sure the CSC detects the connection is
             # closed
-            await asyncio.sleep(2)
+            await asyncio.sleep(time_wait_connection_monitor_check)
 
             self.assertFalse(self.csc.model.are_clients_connected())
             self.assertFalse(self.csc._mock_server.are_servers_connected())
