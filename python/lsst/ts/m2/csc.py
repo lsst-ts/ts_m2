@@ -26,7 +26,7 @@ import time
 
 from lsst.ts import tcpip
 from lsst.ts import salobj
-from lsst.ts.utils import make_done_future
+from lsst.ts.utils import make_done_future, index_generator
 
 from .config_schema import CONFIG_SCHEMA
 from . import MsgType, ErrorCode, Model, MockServer, Translator
@@ -40,13 +40,15 @@ class M2(salobj.ConfigurableCsc):
 
     Parameters
     ----------
-    host : `str`, optional
-        IP address of the TCP/IP interface. (the default is
-        "m2-control.cp.lsst.org", which is the IP of M2 server on summit.)
-    port_command : `int`, optional
-        Command port number of the TCP/IP interface. (the default is 50000)
-    port_telemetry : `int`, optional
-        Telemetry port number of the TCP/IP interface. (the default is 50001)
+    host : `str` or `None`, optional
+        IP address of the TCP/IP interface. (the default is None and the value
+        in ts_config_mttcs configuration files will be applied.)
+    port_command : `int` or `None`, optional
+        Command port number of the TCP/IP interface. (the default is None and
+        the value in ts_config_mttcs configuration files will be applied.)
+    port_telemetry : `int` or `None`, optional
+        Telemetry port number of the TCP/IP interface. (the default is None and
+        the value in ts_config_mttcs configuration files will be applied.)
     timeout_in_second : `float`, optional
         Time limit for reading data from the TCP/IP interface (sec). (the
         default is 0.05)
@@ -85,11 +87,14 @@ class M2(salobj.ConfigurableCsc):
     # Command timeout in second
     COMMAND_TIMEOUT = 10
 
+    # Maximum timeout to wait the telemetry in second
+    TELEMETRY_WAIT_TIMEOUT = 900
+
     def __init__(
         self,
-        host="m2-control.cp.lsst.org",
-        port_command=50000,
-        port_telemetry=50001,
+        host=None,
+        port_command=None,
+        port_telemetry=None,
         timeout_in_second=0.05,
         config_dir=None,
         initial_state=salobj.State.STANDBY,
@@ -115,7 +120,7 @@ class M2(salobj.ConfigurableCsc):
         self._host = host
 
         # Sequence generator
-        self._sequence_generator = salobj.index_generator()
+        self._sequence_generator = index_generator()
 
         # Command port number of the TCP/IP interface
         self._port_command = port_command
@@ -130,7 +135,7 @@ class M2(salobj.ConfigurableCsc):
         # to use
         self._translator = Translator()
 
-        # Mock server that is only needed in the simualtion mode
+        # Mock server that is only needed in the simulation mode
         self._mock_server = None
 
         self.stop_loop_timeout = 5.0
@@ -145,6 +150,9 @@ class M2(salobj.ConfigurableCsc):
 
         # Task of the event loop from component (asyncio.Future)
         self._task_event_loop = make_done_future()
+
+        # Task to monitor the connection status actively
+        self._task_connection_monitor_loop = make_done_future()
 
         # Remote to listen to MTMount position
         self.mtmount = salobj.Remote(
@@ -199,7 +207,12 @@ class M2(salobj.ConfigurableCsc):
         """
 
         self.config = config
-        self.log.debug(f"LUT directory: {self.config.lut_path}.")
+        self.log.debug(f"LUT directory in ts_config_mttcs: {self.config.lut_path}.")
+        self.log.debug(f"Host in ts_config_mttcs: {self.config.host}.")
+        self.log.debug(f"Command port in ts_config_mttcs: {self.config.port_command}.")
+        self.log.debug(
+            f"Telemetry port in ts_config_mttcs: {self.config.port_telemetry}."
+        )
 
     async def close_tasks(self):
 
@@ -221,19 +234,17 @@ class M2(salobj.ConfigurableCsc):
 
         self._run_loops = False
 
-        try:
-            await asyncio.wait_for(
-                self._task_telemetry_loop, timeout=self.stop_loop_timeout
-            )
-            await asyncio.wait_for(
-                self._task_event_loop, timeout=self.stop_loop_timeout
-            )
+        for task in (
+            self._task_telemetry_loop,
+            self._task_event_loop,
+            self._task_connection_monitor_loop,
+        ):
+            try:
+                await asyncio.wait_for(task, timeout=self.stop_loop_timeout)
+            except asyncio.TimeoutError:
+                self.log.debug("Timed out waiting for the loop to finish. Canceling.")
 
-        except asyncio.TimeoutError:
-            self.log.debug("Timed out waiting for the loops to finish. Canceling.")
-
-            self._task_telemetry_loop.cancel()
-            self._task_event_loop.cancel()
+                task.cancel()
 
     async def handle_summary_state(self):
         """Handle summary state changes."""
@@ -266,11 +277,15 @@ class M2(salobj.ConfigurableCsc):
 
             self._run_loops = True
 
-            self.log.debug("Starting the event loop task.")
-            self._task_event_loop = asyncio.create_task(self._event_loop())
+            self.log.debug(
+                "Starting event, telemetry and connection monitor loop tasks."
+            )
 
-            self.log.debug("Starting the telemetry loop task.")
+            self._task_event_loop = asyncio.create_task(self._event_loop())
             self._task_telemetry_loop = asyncio.create_task(self._telemetry_loop())
+            self._task_connection_monitor_loop = asyncio.create_task(
+                self._connection_monitor_loop()
+            )
 
     async def _event_loop(self):
         """Update and output event information from component."""
@@ -286,13 +301,13 @@ class M2(salobj.ConfigurableCsc):
             )
 
             # Publish the SAL event
-            self._publish_message_by_sal("evt_", message)
+            await self._publish_message_by_sal("evt_", message)
 
             # Fault the CSC if the controller is in Fault
             if (self.model.controller_state == salobj.State.FAULT) and (
                 self.summary_state != salobj.State.FAULT
             ):
-                self.fault(
+                await self.fault(
                     code=ErrorCode.ControllerInFault,
                     report="Controller's state is Fault.",
                 )
@@ -302,7 +317,7 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Stop the running of event loop from component.")
 
-    def _publish_message_by_sal(self, prefix_sal_topic, message):
+    async def _publish_message_by_sal(self, prefix_sal_topic, message):
         """Publish the message from component by SAL.
 
         Parameters
@@ -320,7 +335,7 @@ class M2(salobj.ConfigurableCsc):
 
         if hasattr(self, sal_topic_name):
             message_payload.pop("id")
-            getattr(self, sal_topic_name).set_put(**message_payload)
+            await getattr(self, sal_topic_name).set_write(**message_payload)
         else:
             message_name_original = message["id"]
             self.log.warning(
@@ -332,6 +347,9 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Starting telemetry loop from component.")
 
+        time_wait_telemetry = 0.0
+        is_telemetry_timed_out = False
+
         messages_consumed = 0
         messages_consumed_log_timer = asyncio.create_task(
             asyncio.sleep(self.heartbeat_interval)
@@ -339,12 +357,36 @@ class M2(salobj.ConfigurableCsc):
         while self._run_loops:
 
             if self.model.are_clients_connected():
-                message = (
-                    self.model.client_telemetry.queue.get_nowait()
-                    if not self.model.client_telemetry.queue.empty()
-                    else await self.model.client_telemetry.queue.get()
-                )
-                self._publish_message_by_sal("tel_", message)
+
+                if (
+                    time_wait_telemetry >= self.TELEMETRY_WAIT_TIMEOUT
+                    and not is_telemetry_timed_out
+                ):
+                    self.log.warning(
+                        (
+                            "No telemetry for more than "
+                            f"{self.TELEMETRY_WAIT_TIMEOUT } seconds "
+                            "already. Is the internet OK?"
+                        )
+                    )
+                    time_wait_telemetry = 0.0
+                    is_telemetry_timed_out = True
+
+                # If there is no telemetry, sleep for some time
+                if self.model.client_telemetry.queue.empty():
+                    await asyncio.sleep(self.timeout_in_second)
+                    time_wait_telemetry += self.timeout_in_second
+                    continue
+
+                # There is the telemetry to publish
+                time_wait_telemetry = 0.0
+                if is_telemetry_timed_out:
+                    self.log.info("Receive the new telemetry again.")
+
+                is_telemetry_timed_out = False
+
+                message = self.model.client_telemetry.queue.get_nowait()
+                await self._publish_message_by_sal("tel_", message)
                 messages_consumed += 1
                 if messages_consumed_log_timer.done():
                     self.log.debug(
@@ -363,16 +405,49 @@ class M2(salobj.ConfigurableCsc):
 
         self.log.debug("Telemetry loop from component closed.")
 
+    async def _connection_monitor_loop(self, period=1):
+        """Actively monitor the connection status from component. Fault the
+        system if the connection is lost by itself.
+
+        Parameters
+        ----------
+        period : `float` or `int`, optional
+            Period to check the connection status in second. (the default is 1)
+        """
+
+        self.log.debug("Begin to run the connection monitor loop from component.")
+
+        were_clients_connected = False
+        while self._run_loops:
+
+            if self.model.are_clients_connected():
+                were_clients_connected = True
+            else:
+                if were_clients_connected and self.disabled_or_enabled:
+                    were_clients_connected = False
+
+                    await self.model.close()
+
+                    await self.fault(
+                        code=ErrorCode.NoConnection,
+                        report="Lost the TCP/IP connection.",
+                    )
+
+            await asyncio.sleep(period)
+
+        self.log.debug("Connection monitor loop from component closed.")
+
     async def begin_start(self, data: salobj.type_hints.BaseDdsDataType) -> None:
 
-        self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         return await super().begin_start(data)
 
     async def do_start(self, data):
-        await self._connect_server(self.COMMAND_TIMEOUT)
 
         await super().do_start(data)
+
+        await self._connect_server(self.COMMAND_TIMEOUT)
 
     async def _connect_server(self, timeout):
         """Connect the TCP/IP server.
@@ -388,16 +463,29 @@ class M2(salobj.ConfigurableCsc):
             If timeout in connection.
         """
 
-        # self.simulation_mode is the attribute from upstream: BaseCsc
-        if self.simulation_mode == 0:
-            host = self._host
-            port_command = self._port_command
-            port_telemetry = self._port_telemetry
+        # Overwrite the connection information if needed
+        host = self._host if self._host is not None else self.config.host
+        port_command = (
+            self._port_command
+            if self._port_command is not None
+            else self.config.port_command
+        )
+        port_telemetry = (
+            self._port_telemetry
+            if self._port_telemetry is not None
+            else self.config.port_telemetry
+        )
 
-        else:
-            host = tcpip.LOCAL_HOST
+        # In the simulation mode, the ports of mock server are randomly
+        # assigned by the operation system.
+        # self.simulation_mode is the attribute from upstream: BaseCsc
+        if self.simulation_mode == 1:
             port_command = self._mock_server.server_command.port
             port_telemetry = self._mock_server.server_telemetry.port
+
+        self.log.debug(f"Host in connection request: {host}")
+        self.log.debug(f"Command port in connection request: {port_command}")
+        self.log.debug(f"Telemetry port in connection request: {port_telemetry}")
 
         self.model.start(
             host,
@@ -420,7 +508,7 @@ class M2(salobj.ConfigurableCsc):
             )
 
     async def begin_standby(self, data: salobj.type_hints.BaseDdsDataType) -> None:
-        self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         return await super().begin_standby(data)
 
@@ -451,7 +539,7 @@ class M2(salobj.ConfigurableCsc):
         await super().do_standby(data)
 
     async def begin_enable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
-        self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         return await super().begin_enable(data)
 
@@ -473,7 +561,7 @@ class M2(salobj.ConfigurableCsc):
     async def begin_disable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
         # multiply timeout by 3 as this is the number of commands executed with
         # this timeout.
-        self.cmd_disable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT * 3)
+        await self.cmd_disable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT * 3)
 
         return await super().begin_disable(data)
 
@@ -541,7 +629,7 @@ class M2(salobj.ConfigurableCsc):
         except OSError:
             await self.model.close()
 
-            self.fault(
+            await self.fault(
                 code=ErrorCode.NoConnection,
                 report="Lost the TCP/IP connection.",
             )
@@ -554,7 +642,7 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_applyForces.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_applyForces.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         message_name = "applyForces"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
@@ -574,7 +662,9 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_positionMirror.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_positionMirror.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
 
         message_name = "positionMirror"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
@@ -596,7 +686,9 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_resetForceOffsets.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_resetForceOffsets.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
 
         message_name = "resetForceOffsets"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
@@ -632,7 +724,7 @@ class M2(salobj.ConfigurableCsc):
         except OSError:
             await self.model.close()
 
-            self.fault(
+            await self.fault(
                 code=ErrorCode.NoConnection,
                 report="Lost the TCP/IP connection.",
             )
@@ -645,7 +737,7 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_selectInclinationSource.ack_in_progress(
+        await self.cmd_selectInclinationSource.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
@@ -668,7 +760,7 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_setTemperatureOffset.ack_in_progress(
+        await self.cmd_setTemperatureOffset.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
@@ -690,7 +782,7 @@ class M2(salobj.ConfigurableCsc):
         data : `object`
             Data of the SAL message.
         """
-        self.cmd_switchForceBalanceSystem.ack_in_progress(
+        await self.cmd_switchForceBalanceSystem.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
@@ -742,7 +834,7 @@ class M2(salobj.ConfigurableCsc):
         except OSError:
             await self.model.close()
 
-            self.fault(
+            await self.fault(
                 code=ErrorCode.NoConnection,
                 report="Lost the TCP/IP connection.",
             )
@@ -758,11 +850,11 @@ class M2(salobj.ConfigurableCsc):
         parser.add_argument(
             "--host",
             type=str,
-            default="m2-control.cp.lsst.org",
+            default=None,
             help="""
-                 IP address of the TCP/IP interface. The default is
-                 'm2-control.cp.lsst.org', which is the IP of M2 server on
-                 summit. Do not use this in the simulation mode.
+                 IP address of the TCP/IP interface. The default is None and
+                 the value in ts_config_mttcs configuration files will be
+                 applied. Do not use this in the simulation mode.
                  """,
         )
 
@@ -770,10 +862,11 @@ class M2(salobj.ConfigurableCsc):
             "--ports",
             type=int,
             nargs=2,
-            default=[50000, 50001],
+            default=[None, None],
             help="""
                  Ports: [port_command, port_telemetry] of the TCP/IP interface.
-                 The default is [50000, 50001]. Do not use this in the
+                 The default is [None, None] and the value in ts_config_mttcs
+                 configuration files will be applied. Do not use this in the
                  simulation mode.
                  """,
         )

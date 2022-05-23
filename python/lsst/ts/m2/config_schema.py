@@ -26,15 +26,27 @@ import yaml
 CONFIG_SCHEMA = yaml.safe_load(
     """
 $schema: http://json-schema.org/draft-07/schema#
-$id: https://github.com/lsst-ts/ts_m2/blob/master/schema/m2.yaml
+$id: https://github.com/lsst-ts/ts_m2/blob/main/python/lsst/ts/m2/config_schema.py
 # title must end with one or more spaces followed by the schema version, which must begin with "v"
-title: M2 v1
+title: M2 v2
 description: Schema for M2 configuration files
 type: object
 properties:
   lut_path:
     description: Relative location of the Look-Up Tables, with respect to configuration package.
     type: string
-    default: "harrisLUT/"
+  host:
+    description: >-
+      IP address of the TCP/IP interface.
+    type: string
+    format: hostname
+  port_command:
+    description: >-
+      Command port number of the TCP/IP interface.
+    type: integer
+  port_telemetry:
+    description: >-
+      Telemetry port number of the TCP/IP interface.
+    type: integer
 """
 )
