@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.5.3
+------
+
+* Support the *pyproject.toml* file.
+
 v0.5.2
 ------
 
