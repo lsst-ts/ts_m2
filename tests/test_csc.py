@@ -70,14 +70,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         await self.check_bin_script(
             name="MTM2",
             index=None,
-            exe_name="run_mtm2.py",
+            exe_name="run_mtm2",
             default_initial_state=salobj.State.STANDBY,
         )
 
         await self.check_bin_script(
             name="MTM2",
             index=None,
-            exe_name="run_mtm2.py",
+            exe_name="run_mtm2",
             default_initial_state=salobj.State.STANDBY,
             cmdline_args=["--host", "127.0.0.1", "--ports", "0", "1"],
         )
