@@ -32,7 +32,7 @@ from .config_schema import CONFIG_SCHEMA
 from . import MsgType, ErrorCode, Model, MockServer, Translator
 from . import __version__
 
-__all__ = ["M2"]
+__all__ = ["M2", "run_mtm2"]
 
 
 class M2(salobj.ConfigurableCsc):
@@ -887,3 +887,8 @@ class M2(salobj.ConfigurableCsc):
         kwargs["port_command"] = args.ports[0]
         kwargs["port_telemetry"] = args.ports[1]
         kwargs["verbose"] = args.verbose
+
+
+def run_mtm2():
+    """Run the MTM2 CSC."""
+    asyncio.run(M2.amain(0))
