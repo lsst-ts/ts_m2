@@ -9,7 +9,7 @@ source:
 build:
   script: python -m pip install --no-deps --ignore-installed .
   entry_points:
-    - run_mtm2 = lsst.ts.m2.cli:run_mtm2
+    - run_mtm2 = lsst.ts.m2.csc:run_mtm2
   script_env:
     - PATH
     - PYTHONPATH

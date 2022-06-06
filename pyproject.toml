@@ -18,6 +18,9 @@ version = { attr = "setuptools_scm.get_version" }
 [tool.setuptools.packages.find]
 where = [ "python" ]
 
+[project.scripts]
+run_mtm2 = "lsst.ts.m2.csc:run_mtm2"
+
 [tool.setuptools_scm]
 write_to = "python/lsst/ts/m2/version.py"
 write_to_template = """
