@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.5.4
+------
+
+* Build package with noarch instead of linux64 (the default).
+
 v0.5.3
 ------
 
