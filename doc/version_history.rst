@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.5.5
+------
+
+* Update the conda recipe for multiple versions of python.
+* Ignore the error in `tcpip.close_stream_writer()`.
+
 v0.5.4
 ------
 
