@@ -253,8 +253,8 @@ class TcpClient:
             # https://github.com/home-assistant/core/issues/10468
             try:
                 await tcpip.close_stream_writer(self.writer)
-            except Exception as error:
-                self.log.debug(f"Error in self._basic_close(): {error}")
+            except Exception:
+                self.log.exception("Error closing stream writer. Ignoring.")
 
             self.writer = None
 
