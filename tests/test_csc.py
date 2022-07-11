@@ -237,6 +237,18 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Check the server fault
             self.assertTrue(mock_model.error_cleared)
 
+    async def test_standby_fault_accidental(self):
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            # Put the csc to the Fault state
+            await self.csc.fault(code=0, report="test fault")
+
+            # Transition to the Standby state
+            await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
+
+            self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
+
     async def test_enable(self):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
