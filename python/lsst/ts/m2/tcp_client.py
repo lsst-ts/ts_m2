@@ -248,7 +248,14 @@ class TcpClient:
         self._monitor_loop_task.cancel()
 
         if self.writer is not None:
-            await tcpip.close_stream_writer(self.writer)
+            # Ignore the TimeoutError (or others) from
+            # asyncio/selector_events.py. A related discussion is here:
+            # https://github.com/home-assistant/core/issues/10468
+            try:
+                await tcpip.close_stream_writer(self.writer)
+            except Exception:
+                self.log.exception("Error closing stream writer. Ignoring.")
+
             self.writer = None
 
     async def write(self, msg_type, msg_name, msg_details=None, comp_name=None):
