@@ -27,9 +27,10 @@ import time
 from lsst.ts import tcpip
 from lsst.ts import salobj
 from lsst.ts.utils import make_done_future, index_generator
+from lsst.ts.m2com import MsgType, Controller, MockServer
 
 from .config_schema import CONFIG_SCHEMA
-from . import MsgType, ErrorCode, Model, MockServer, Translator
+from . import ErrorCode, Translator
 from . import __version__
 
 __all__ = ["M2", "run_mtm2"]
@@ -70,8 +71,8 @@ class M2(salobj.ConfigurableCsc):
         A logger.
     timeout_in_second : `float`
         Time limit for reading data from the TCP/IP interface (sec).
-    model : `Model`
-        Model to do the TCP/IP communication with the servers.
+    controller_cell : `Controller`
+        Controller to do the TCP/IP communication with the servers of M2 cell.
     stop_loop_timeout : `float`
         Timeout of stoping loop in second.
     config : `types.SimpleNamespace` or None
@@ -129,7 +130,9 @@ class M2(salobj.ConfigurableCsc):
         self._port_telemetry = port_telemetry
 
         self.timeout_in_second = timeout_in_second
-        self.model = Model(log=self.log, timeout_in_second=self.timeout_in_second)
+        self.controller_cell = Controller(
+            log=self.log, timeout_in_second=self.timeout_in_second
+        )
 
         # Translator to translate the message from component for the SAL topic
         # to use
@@ -172,8 +175,8 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        if self.model.are_clients_connected():
-            await self.model.client_telemetry.write(
+        if self.controller_cell.are_clients_connected():
+            await self.controller_cell.client_telemetry.write(
                 MsgType.Telemetry,
                 "elevation",
                 msg_details=dict(actualPosition=data.actualPosition),
@@ -189,8 +192,8 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        if self.model.are_clients_connected():
-            await self.model.client_command.write(
+        if self.controller_cell.are_clients_connected():
+            await self.controller_cell.client_command.write(
                 MsgType.Event,
                 "mountInPosition",
                 msg_details=dict(inPosition=data.inPosition),
@@ -216,7 +219,7 @@ class M2(salobj.ConfigurableCsc):
 
     async def close_tasks(self):
 
-        await self.model.close()
+        await self.controller_cell.close()
 
         if self._mock_server is not None:
             await self._mock_server.close()
@@ -295,16 +298,16 @@ class M2(salobj.ConfigurableCsc):
         while self._run_loops:
 
             message = (
-                self.model.queue_event.get_nowait()
-                if not self.model.queue_event.empty()
-                else await self.model.queue_event.get()
+                self.controller_cell.queue_event.get_nowait()
+                if not self.controller_cell.queue_event.empty()
+                else await self.controller_cell.queue_event.get()
             )
 
             # Publish the SAL event
             await self._publish_message_by_sal("evt_", message)
 
             # Fault the CSC if the controller is in Fault
-            if (self.model.controller_state == salobj.State.FAULT) and (
+            if (self.controller_cell.controller_state == salobj.State.FAULT) and (
                 self.summary_state != salobj.State.FAULT
             ):
                 await self.fault(
@@ -356,7 +359,7 @@ class M2(salobj.ConfigurableCsc):
         )
         while self._run_loops:
 
-            if self.model.are_clients_connected():
+            if self.controller_cell.are_clients_connected():
 
                 if (
                     time_wait_telemetry >= self.TELEMETRY_WAIT_TIMEOUT
@@ -373,7 +376,7 @@ class M2(salobj.ConfigurableCsc):
                     is_telemetry_timed_out = True
 
                 # If there is no telemetry, sleep for some time
-                if self.model.client_telemetry.queue.empty():
+                if self.controller_cell.client_telemetry.queue.empty():
                     await asyncio.sleep(self.timeout_in_second)
                     time_wait_telemetry += self.timeout_in_second
                     continue
@@ -385,7 +388,7 @@ class M2(salobj.ConfigurableCsc):
 
                 is_telemetry_timed_out = False
 
-                message = self.model.client_telemetry.queue.get_nowait()
+                message = self.controller_cell.client_telemetry.queue.get_nowait()
                 await self._publish_message_by_sal("tel_", message)
                 messages_consumed += 1
                 if messages_consumed_log_timer.done():
@@ -420,13 +423,13 @@ class M2(salobj.ConfigurableCsc):
         were_clients_connected = False
         while self._run_loops:
 
-            if self.model.are_clients_connected():
+            if self.controller_cell.are_clients_connected():
                 were_clients_connected = True
             else:
                 if were_clients_connected and self.disabled_or_enabled:
                     were_clients_connected = False
 
-                    await self.model.close()
+                    await self.controller_cell.close()
 
                     await self.fault(
                         code=ErrorCode.NoConnection,
@@ -487,7 +490,7 @@ class M2(salobj.ConfigurableCsc):
         self.log.debug(f"Command port in connection request: {port_command}")
         self.log.debug(f"Telemetry port in connection request: {port_telemetry}")
 
-        self.model.start(
+        self.controller_cell.start(
             host,
             port_command,
             port_telemetry,
@@ -497,12 +500,12 @@ class M2(salobj.ConfigurableCsc):
 
         time_start = time.monotonic()
         connection_pooling_time = 0.1
-        while not self.model.are_clients_connected() and (
+        while not self.controller_cell.are_clients_connected() and (
             (time.monotonic() - time_start) < timeout
         ):
             await asyncio.sleep(connection_pooling_time)
 
-        if not self.model.are_clients_connected():
+        if not self.controller_cell.are_clients_connected():
             raise RuntimeError(
                 f"Timeount in connection. Host: {host}, ports: {port_command} and {port_telemetry}"
             )
@@ -516,12 +519,12 @@ class M2(salobj.ConfigurableCsc):
 
         # Try to transition the controller's state to OFFLINE state before
         # closing the connection
-        if self.model.are_clients_connected():
+        if self.controller_cell.are_clients_connected():
 
             timeout = self.COMMAND_TIMEOUT
 
             # Try to clear the error if any
-            if self.model.controller_state == salobj.State.FAULT:
+            if self.controller_cell.controller_state == salobj.State.FAULT:
                 await self._clear_controller_errors()
 
             await self._transition_controller_state(
@@ -532,7 +535,7 @@ class M2(salobj.ConfigurableCsc):
             )
 
         # Disconnect from the server
-        await self.model.close()
+        await self.controller_cell.close()
 
         await self.stop_loops()
 
@@ -619,15 +622,15 @@ class M2(salobj.ConfigurableCsc):
             raise ValueError(f"{message_name} command is not supported.")
 
         try:
-            if self.model.controller_state == state_original:
-                await self.model.write_command_to_server(
+            if self.controller_cell.controller_state == state_original:
+                await self.controller_cell.write_command_to_server(
                     message_name,
                     timeout=timeout,
                     controller_state_expected=state_target,
                 )
 
         except OSError:
-            await self.model.close()
+            await self.controller_cell.close()
 
             await self.fault(
                 code=ErrorCode.NoConnection,
@@ -719,10 +722,10 @@ class M2(salobj.ConfigurableCsc):
         """
 
         try:
-            await self.model.clear_errors()
+            await self.controller_cell.clear_errors()
 
         except OSError:
-            await self.model.close()
+            await self.controller_cell.close()
 
             await self.fault(
                 code=ErrorCode.NoConnection,
@@ -806,7 +809,7 @@ class M2(salobj.ConfigurableCsc):
         allowed_curr_states : `list [lsst.ts.salobj.State]`
             Allowed current states.
         """
-        self.model.assert_controller_state(message_name, allowed_curr_states)
+        self.controller_cell.assert_controller_state(message_name, allowed_curr_states)
         self.assert_enabled()
 
     async def _write_command_to_server(
@@ -825,14 +828,14 @@ class M2(salobj.ConfigurableCsc):
         """
 
         try:
-            await self.model.write_command_to_server(
+            await self.controller_cell.write_command_to_server(
                 message_name,
                 message_details=message_details,
                 timeout=timeout,
             )
 
         except OSError:
-            await self.model.close()
+            await self.controller_cell.close()
 
             await self.fault(
                 code=ErrorCode.NoConnection,
