@@ -20,6 +20,7 @@ test:
     - ts-salobj {{ salobj_version }}
     - ts-tcpip
     - ts-utils
+    - ts-m2com
   source_files:
     - python
     - bin
@@ -51,3 +52,4 @@ requirements:
     - pandas
     - ts-tcpip
     - ts-utils
+    - ts-m2com
