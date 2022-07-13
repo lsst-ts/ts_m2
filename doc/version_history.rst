@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.5.6
+------
+
+* Use the `ts_m2com <https://github.com/lsst-ts/ts_m2com>`_.
+* Fix the indentation of *version_history.rst*.
+
 v0.5.5
 ------
 
@@ -21,10 +27,7 @@ v0.5.3
 v0.5.2
 ------
 
-* Actively monitor the connection status.
-If the server closes the connection, M2 CSC will detect this and transition
-to the **Fault** state.
-If there is no new telemetry for some time, there will be the warning message.
+* Actively monitor the connection status. If the server closes the connection, M2 CSC will detect this and transition to the **Fault** state. If there is no new telemetry for some time, there will be the warning message.
 
 v0.5.1
 ------
@@ -40,21 +43,16 @@ v0.5.0
 v0.4.1
 ------
 * In `CSC`:
-  * send ack_in_progress in `begin_` methods of state transition commands, since they are called before the state transition.
-  * send ack_in_progress for all CSC commands that use timeout information.
-  * In `_telemetry_loop`, refactor how to get new messages and add information about message consumption rate
-    If queue is not empty, get with `get_nowait` otherwise use asynchronous method.
-    This will cause the loop to pause and wait for new messages to arrive asynchronously, without the need to pool for new data while at the same time, reading as fast as possible when the queue is not empty.
-    The penalty for not using empty() is about 5%.
-  * In `_event_loop`, refactor how to get new messages.
-    If queue us not empty, get with `get_nowait` otherwise use asynchronous method.
-    This will cause the loop to pause and wait for new messages to arrive asynchronously, without the need to pool for new data while at the same time, reading as fast as possible when the queue is not empty.
+
+  * Send ack_in_progress in `begin_` methods of state transition commands, since they are called before the state transition.
+  * Send ack_in_progress for all CSC commands that use timeout information.
+  * In `_telemetry_loop`, refactor how to get new messages and add information about message consumption rate. If queue is not empty, get with `get_nowait` otherwise use asynchronous method. This will cause the loop to pause and wait for new messages to arrive asynchronously, without the need to pool for new data while at the same time, reading as fast as possible when the queue is not empty. The penalty for not using empty() is about 5%.
+  * In `_event_loop`, refactor how to get new messages. If queue us not empty, get with `get_nowait` otherwise use asynchronous method. This will cause the loop to pause and wait for new messages to arrive asynchronously, without the need to pool for new data while at the same time, reading as fast as possible when the queue is not empty.
   * In `do_standby`, stop loops after closing model.
   * In `close_tasks`, close model before stopping loops, or messages are still received while queue's are no longer being read.
+
 * In `Model` class, pass `name` to the different `TcpClient` instances to allow debugging source of issues.
-* Improve how `TcpClient` handles queue being filled up by adding timers for checking queue size and logging `QueueFull` exceptions.
-  Instead of logging at every occurrence, create a timer task and only log when the timer is done.
-  When queue is full, keep track of how many messages were lost.
+* Improve how `TcpClient` handles queue being filled up by adding timers for checking queue size and logging `QueueFull` exceptions. Instead of logging at every occurrence, create a timer task and only log when the timer is done. When queue is full, keep track of how many messages were lost.
 * Add name attribute to `TcpClient` class to allow one to differentiate between the different instances of the class when debugging.
 * In `utility.check_queue_size`, add `name` parameter for logging purposes.
 * Remove usage of deprecated package `asynctest` in `test_csc`.

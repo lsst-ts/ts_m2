@@ -15,6 +15,7 @@ Dependencies
 * `ts_config_mttcs <https://github.com/lsst-ts/ts_config_mttcs>`_
 * `ts_tcpip <https://github.com/lsst-ts/ts_tcpip>`_
 * `ts_utils <https://github.com/lsst-ts/ts_utils>`_
+* `ts_m2com <https://github.com/lsst-ts/ts_m2com>`_
 
 .. _Architecture:
 
@@ -28,18 +29,9 @@ The classes in module are listed below.
 
 * **M2** is a CSC class. It inherits from the *ts_salobj*'s **ConfigurableCsc**. *ts_salobj* provides interfaces for the SAL communication.
 * **Translator** translates the message from component to have the correct format for **M2** to use to communicate among components by SAL.
-* **Model** has the business logic to communicate with hardware by TCP/IP interface.
-* **TcpClient** is a TCP/IP client for **Model** to use.
-* **MockServer** is a mock server of M2 to support the simulation mode.
-* **MockModel** simulates the hardware behavior to be used by **MockServer**.
-* **MockCommand** simulates the execution of command in real hardware.
-* **MockMessageEvent** simulates the message of event from real hardware.
-* **MockMessageTelemetry** simulates the message of telemetry from real hardware.
 
 Only the **M2** instance has the knowledge of high-level control logic and middleware layer provided by **ConfigurableCsc**.
-The business logic is implemented in the **Model** class.
-This allows for testing **Model** without the SAL integration.
-All the mock classes are used to support the simulation mode.
+The simulation mode is supported by mock classes in `ts_m2com <https://github.com/lsst-ts/ts_m2com>`_.
 
 The *M2* CSC communicates with the M2 engineering user interface (EUI, `ts_mtm2 <https://github.com/lsst-ts/ts_mtm2>`_) deployed in a Linux server at this moment.
 It will be upgraded to communiate with the M2 cell control system (`ts_mtm2_cell <https://github.com/lsst-ts/ts_mtm2_cell>`_) deployed in a NI cRIO controller in the near future.
@@ -48,18 +40,6 @@ One is used in the manual local mode and the other one is used in the remote con
 For the latter, the original developer in vendor used the LSST state machine defined in LTS-307, TCS Software Component Interface.
 Therefore, to simplify the implementation, the state machine in *M2* CSC is designed to decouple the controller's state machine with the state machine in *ts_salobj*.
 The detail can follow :ref:`State_Machine`.
-
-.. _JSON_String:
-
-JSON String
-===========
-
-The `JSON <https://www.json.org>`_ string is used in the TCP/IP communication between the *M2* CSC and hardware.
-The design here takes the following documents as references: `TS JSON Message Format Proposal <https://confluence.lsstcorp.org/display/LTS/TS+JSON+Message+Format+Proposal>`_ and `TS JSON Message Format Proposal <https://confluence.lsstcorp.org/display/LTS/TS+JSON+Message+Format+Proposal>`_.
-
-.. toctree::
-    json-string-format
-    :maxdepth: 1
 
 .. _API:
 
@@ -99,7 +79,7 @@ To start the *M2* CSC, enter the following command:
 
 .. prompt:: bash
 
-    python bin/run_mtm2.py
+    bin/run_mtm2
 
 You can use the argument of *-s* to run the simulation mode or *-h* to get all available argument details.
 Stopping the CSC is done by SIG-INTing the process, usually by :kbd:`ctrl` + :kbd:`c`.
