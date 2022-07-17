@@ -21,26 +21,7 @@
 
 from enum import auto, IntEnum
 
-__all__ = ["MsgType", "CommandStatus", "DetailedState", "ErrorCode"]
-
-
-class MsgType(IntEnum):
-    Command = 1
-    Event = auto()
-    Telemetry = auto()
-
-
-class CommandStatus(IntEnum):
-    Success = 1
-    Fail = auto()
-    Ack = auto()
-    NoAck = auto()
-    Unknown = auto()
-
-
-class DetailedState(IntEnum):
-    PublishOnly = 1
-    Available = auto()
+__all__ = ["ErrorCode"]
 
 
 class ErrorCode(IntEnum):

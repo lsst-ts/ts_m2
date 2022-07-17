@@ -25,7 +25,8 @@ import unittest
 import numpy as np
 
 from lsst.ts import salobj
-from lsst.ts.m2 import M2, DetailedState
+from lsst.ts.m2com import DetailedState
+from lsst.ts.m2 import M2
 from lsst.ts.idl.enums.MTM2 import InclinationTelemetrySource
 
 # Timeout for fast operations (seconds)
@@ -88,7 +89,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         ):
 
             self.assertIsNone(self.csc._mock_server)
-            self.assertFalse(self.csc.model.are_clients_connected())
+            self.assertFalse(self.csc.controller_cell.are_clients_connected())
 
     async def test_start(self):
         async with self.make_csc(
@@ -112,7 +113,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check the TCP/IP connection is on
             self.assertIsNotNone(self.csc._mock_server)
-            self.assertTrue(self.csc.model.are_clients_connected())
+            self.assertTrue(self.csc.controller_cell.are_clients_connected())
 
             # Simulate the MTMount CSC
             elevation_angle = 10
@@ -204,7 +205,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         ):
             # Enter the Disabled state to construct the connection
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
-            self.assertTrue(self.csc.model.are_clients_connected())
+            self.assertTrue(self.csc.controller_cell.are_clients_connected())
 
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
@@ -358,15 +359,17 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Enter the Enabled state to construct the connection and make
             # sure I can get the controller's state event
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
-            self.assertTrue(self.csc.model.are_clients_connected())
+            self.assertTrue(self.csc.controller_cell.are_clients_connected())
             self.assertTrue(self.csc._mock_server.are_servers_connected())
 
             # Check the last sequence ID
-            self.assertEqual(self.csc.model.client_command.last_sequence_id, 3)
+            self.assertEqual(
+                self.csc.controller_cell.client_command.last_sequence_id, 3
+            )
 
             # Enter the Standby state to close the connection
             await salobj.set_summary_state(self.remote, salobj.State.STANDBY)
-            self.assertFalse(self.csc.model.are_clients_connected())
+            self.assertFalse(self.csc.controller_cell.are_clients_connected())
             self.assertFalse(self.csc._mock_server.are_servers_connected())
 
             # Second time of connection
@@ -374,12 +377,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Enter the Enabled state to construct the connection and make
             # sure I can get the controller's state event
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
-            self.assertTrue(self.csc.model.are_clients_connected())
+            self.assertTrue(self.csc.controller_cell.are_clients_connected())
             self.assertTrue(self.csc._mock_server.are_servers_connected())
 
             # Check the last sequence ID. Note the value should be 9 instead of
             # 3 from the previous connection.
-            self.assertEqual(self.csc.model.client_command.last_sequence_id, 9)
+            self.assertEqual(
+                self.csc.controller_cell.client_command.last_sequence_id, 9
+            )
 
     async def test_telemetry_loop(self):
         async with self.make_csc(
@@ -400,7 +405,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Enter the Disabled state to construct the connection
             await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
-            self.assertTrue(self.csc.model.are_clients_connected())
+            self.assertTrue(self.csc.controller_cell.are_clients_connected())
 
             time_wait_connection_monitor_check = 2
             await asyncio.sleep(time_wait_connection_monitor_check)
@@ -411,7 +416,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # closed
             await asyncio.sleep(time_wait_connection_monitor_check)
 
-            self.assertFalse(self.csc.model.are_clients_connected())
+            self.assertFalse(self.csc.controller_cell.are_clients_connected())
             self.assertFalse(self.csc._mock_server.are_servers_connected())
 
             self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
@@ -803,7 +808,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             mock_model.fault()
             await asyncio.sleep(1)
 
-            self.assertEqual(self.csc.model.controller_state, salobj.State.FAULT)
+            self.assertEqual(
+                self.csc.controller_cell.controller_state, salobj.State.FAULT
+            )
 
             data_controller_state = await self.remote.evt_controllerState.aget(
                 timeout=STD_TIMEOUT
@@ -818,7 +825,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertTrue(mock_model.error_cleared)
             await asyncio.sleep(1)
 
-            self.assertEqual(self.csc.model.controller_state, salobj.State.OFFLINE)
+            self.assertEqual(
+                self.csc.controller_cell.controller_state, salobj.State.OFFLINE
+            )
 
     async def test_setTemperatureOffset(self):
         async with self.make_csc(
