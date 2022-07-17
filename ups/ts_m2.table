@@ -8,6 +8,7 @@ setupRequired(ts_idl)
 setupRequired(ts_config_mttcs)
 setupRequired(ts_tcpip)
 setupRequired(ts_utils)
+setupRequired(ts_m2com)
 
 envPrepend(PATH, ${PRODUCT_DIR}/bin)
 

@@ -21,6 +21,8 @@ pipeline {
         work_branches = "${CHANGE_BRANCH} ${GIT_BRANCH} develop"
         // PlantUML url
         PLANTUML_URL = "https://github.com/plantuml/plantuml/releases/download/v1.2021.13/plantuml-1.2021.13.jar"
+        // ts_m2com url
+        M2COM_URL = "https://github.com/lsst-ts/ts_m2com.git"
         // Authority to publish the document online
         LTD_USERNAME = "${user_ci_USR}"
         LTD_PASSWORD = "${user_ci_PSW}"
@@ -47,6 +49,7 @@ pipeline {
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_xml && /home/saluser/.checkout_repo.sh \${work_branches}\"
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_idl && /home/saluser/.checkout_repo.sh \${work_branches}\"
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos/ts_sal && /home/saluser/.checkout_repo.sh \${work_branches}\"
+                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd /home/saluser/repos && git clone ${M2COM_URL} && cd ts_m2com/ && /home/saluser/.checkout_repo.sh \${work_branches}\"
                     docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && source ~/.bashrc && make_idl_files.py MTM2 MTMount\"
                     """
                 }
@@ -56,7 +59,7 @@ pipeline {
             steps {
                 script {
                     sh """
-                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd repo && eups declare -r . -t saluser && setup ts_m2 -t saluser && pytest -v\"
+                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd ~/repos/ts_m2com && eups declare -r . -t saluser && cd ~/repo && eups declare -r . -t saluser && setup ts_m2 -t saluser && pytest -v\"
                     """
                 }
             }
@@ -74,6 +77,7 @@ pipeline {
     post {
         cleanup {
             sh """
+                docker exec -u root --privileged \${container_name} sh -c \"chmod -R a+rw /home/saluser/repos/ts_m2com/ \"
                 docker exec -u root --privileged \${container_name} sh -c \"chmod -R a+rw /home/saluser/repo/ \"
                 docker stop \${container_name}
             """
