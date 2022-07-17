@@ -28,6 +28,7 @@ from lsst.ts import tcpip
 from lsst.ts import salobj
 from lsst.ts.utils import make_done_future, index_generator
 from lsst.ts.m2com import MsgType, Controller, MockServer
+from lsst.ts.m2com import __version__ as __m2com_version__
 
 from .config_schema import CONFIG_SCHEMA
 from . import ErrorCode, Translator
@@ -165,6 +166,9 @@ class M2(salobj.ConfigurableCsc):
         self.mtmount.evt_elevationInPosition.callback = (
             self.set_mount_elevation_in_position_callback
         )
+
+        # Software version of the M2 common module
+        self.evt_softwareVersions.set(subsystemVersions=f"ts-m2com={__m2com_version__}")
 
     async def set_mount_elevation_callback(self, data):
         """Callback function to set the mount elevation.

@@ -2,7 +2,7 @@
 Version History
 ===============
 
-v0.5.6
+v0.6.0
 ------
 
 * Use the `ts_m2com <https://github.com/lsst-ts/ts_m2com>`_.
