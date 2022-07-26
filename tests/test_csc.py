@@ -190,8 +190,8 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
             self.assertLess(abs(data_power_status.motorVoltage), 1)
             self.assertLess(abs(data_power_status.motorCurrent), 1)
-            self.assertGreater(abs(data_power_status.commVoltage), 20)
-            self.assertGreater(abs(data_power_status.commCurrent), 5)
+            self.assertLess(abs(data_power_status.commVoltage), 1)
+            self.assertLess(abs(data_power_status.commCurrent), 1)
 
             data_disp_sensors = await self.remote.tel_displacementSensors.next(
                 flush=False, timeout=STD_TIMEOUT

@@ -1,3 +1,5 @@
+[![docs](https://img.shields.io/badge/docs-ts--m2.lsst.io-brightgreen)](https://ts-m2.lsst.io/)
+
 # M2 Commandable SAL Component (CSC)
 
 This package is the commandable SAL component (CSC) and provides a simple emulator for the M2 control system.
@@ -24,7 +26,3 @@ scons
 ```
 
 The final line (`scons`) will run the build and installation process.
-
-## Document
-
-See [here](https://ts-m2.lsst.io) for the detailed documents.
