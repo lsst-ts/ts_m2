@@ -25,7 +25,7 @@ import unittest
 import numpy as np
 
 from lsst.ts import salobj
-from lsst.ts.m2com import DetailedState
+from lsst.ts.m2com import DetailedState, NUM_ACTUATOR, NUM_TANGENT_LINK
 from lsst.ts.m2 import M2
 from lsst.ts.idl.enums.MTM2 import InclinationTelemetrySource
 
@@ -557,11 +557,13 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check sending axial forces out of limit
             mock_model = self.csc._mock_server.model
-            set_axial_force = np.zeros(mock_model.n_actuators)
+
+            n_axial_actuators = NUM_ACTUATOR - NUM_TANGENT_LINK
+            set_axial_force = np.zeros(n_axial_actuators)
             random_actuators = np.random.randint(
                 0,
-                mock_model.n_actuators,
-                size=np.random.randint(1, mock_model.n_actuators),
+                n_axial_actuators,
+                size=np.random.randint(1, n_axial_actuators),
             )
             set_axial_force[random_actuators] = mock_model.max_axial_force + 1.0
 
@@ -574,11 +576,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 )
 
             # Check sending tangent forces out of limit
-            set_tangent_force = np.zeros(mock_model.n_tangent_actuators)
+            set_tangent_force = np.zeros(NUM_TANGENT_LINK)
             random_actuators = np.random.randint(
                 0,
-                mock_model.n_tangent_actuators,
-                size=np.random.randint(1, mock_model.n_tangent_actuators),
+                NUM_TANGENT_LINK,
+                size=np.random.randint(1, NUM_TANGENT_LINK),
             )
             set_tangent_force[random_actuators] = mock_model.max_tangent_force + 1.0
 
@@ -732,8 +734,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
             self.assertTrue(force_balance_status.status)
-
-            self.remote.evt_m2AssemblyInPosition.flush()
 
             # Switch the force balance system off
             await self.remote.cmd_switchForceBalanceSystem.set_start(status=False)
