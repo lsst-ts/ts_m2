@@ -5,7 +5,7 @@ Version History
 v0.6.2
 ------
 
-* Add the *StaticTransferMatrix.csv* in *tests/harrisLUT*.
+* Remove the *tests/harrisLUT*.
 * Fix the test from the update of **ts_m2com**.
 
 v0.6.1
