@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.6.3
+------
+
+* Fix the test from the update of **ts_m2com**.
+
 v0.6.2
 ------
 
