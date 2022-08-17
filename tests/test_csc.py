@@ -119,9 +119,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             elevation_angle = 10
             await self._simulate_csc_mount(elevation_angle)
 
-            # Check the update of zenith angle from MTMount CSC
+            # There should be no update of inclinometer angle from MTMount CSC
             mock_model = self.csc._mock_server.model
-            self.assertEqual(mock_model.zenith_angle, 90 - elevation_angle)
+            self.assertEqual(mock_model.control_open_loop.inclinometer_angle, 90)
 
             # Check the update of mount is in position or not from MTMount CSC
             self.assertEqual(mock_model.mtmount_in_position, True)
@@ -484,8 +484,12 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
             mock_model = self.csc._mock_server.model
-            np.testing.assert_array_equal(mock_model.axial_forces["applied"], axial)
-            np.testing.assert_array_equal(mock_model.tangent_forces["applied"], tangent)
+            np.testing.assert_array_equal(
+                mock_model.control_closed_loop.axial_forces["applied"], axial
+            )
+            np.testing.assert_array_equal(
+                mock_model.control_closed_loop.tangent_forces["applied"], tangent
+            )
 
             in_position = (
                 await self.remote.evt_m2AssemblyInPosition.next(
@@ -540,8 +544,16 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             self.assertTrue(in_position)
 
-            self.assertEqual(np.sum(np.abs(mock_model.axial_forces["applied"])), 0)
-            self.assertEqual(np.sum(np.abs(mock_model.tangent_forces["applied"])), 0)
+            self.assertEqual(
+                np.sum(np.abs(mock_model.control_closed_loop.axial_forces["applied"])),
+                0,
+            )
+            self.assertEqual(
+                np.sum(
+                    np.abs(mock_model.control_closed_loop.tangent_forces["applied"])
+                ),
+                0,
+            )
 
             tangent_forces = await self.remote.tel_tangentForce.next(flush=True)
             axial_forces = await self.remote.tel_axialForce.next(flush=True)
@@ -560,12 +572,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             n_axial_actuators = NUM_ACTUATOR - NUM_TANGENT_LINK
             set_axial_force = np.zeros(n_axial_actuators)
-            random_actuators = np.random.randint(
-                0,
-                n_axial_actuators,
-                size=np.random.randint(1, n_axial_actuators),
-            )
-            set_axial_force[random_actuators] = mock_model.max_axial_force + 1.0
+            set_axial_force[0] = mock_model.control_closed_loop.LIMIT_FORCE_AXIAL + 1.0
 
             with self.assertRaises(
                 salobj.AckError,
@@ -577,12 +584,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check sending tangent forces out of limit
             set_tangent_force = np.zeros(NUM_TANGENT_LINK)
-            random_actuators = np.random.randint(
-                0,
-                NUM_TANGENT_LINK,
-                size=np.random.randint(1, NUM_TANGENT_LINK),
+            set_tangent_force[0] = (
+                mock_model.control_closed_loop.LIMIT_FORCE_TANGENT + 1.0
             )
-            set_tangent_force[random_actuators] = mock_model.max_tangent_force + 1.0
 
             with self.assertRaises(
                 salobj.AckError,
@@ -696,10 +700,12 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
                 zenith_angle_values[i] = zenith_angle.measured
 
+            # Because the source is still ONBOARD, the M2 should not care about
+            # the value from the MTMount. The default value is 0.
             inclinometer_rms = 0.05
             self.assertAlmostEqual(
                 np.mean(zenith_angle_values),
-                90.0 - elevation,
+                0,
                 int(np.ceil(-np.log10(inclinometer_rms))) - 1,
             )
 
@@ -716,11 +722,15 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(incl_source.source, InclinationTelemetrySource.MTMOUNT)
 
+            await self.csc_mtmount.tel_elevation.set_write(actualPosition=elevation + 1)
+
             zenith_angle = await self.remote.tel_zenithAngle.next(
                 flush=True, timeout=STD_TIMEOUT
             )
 
-            self.assertEqual(zenith_angle.measured, 90.0 - elevation)
+            # Need to consider the internal random variable in the simulation
+            # of zenith angle in mock model.
+            self.assertLess(abs(zenith_angle.inclinometerRaw - elevation - 1), 3)
 
     async def test_switchForceBalanceSystem(self):
         async with self.make_csc(
@@ -765,35 +775,13 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertTrue(np.all(np.abs(axial_forces.lutGravity) > 0.0))
             self.assertTrue(np.all(np.abs(axial_forces.lutTemperature) > 0.0))
 
-            # Measured value should be lutGravity+lutTemperature with some
-            # variation due to introduced noise.
-            expected = np.array(axial_forces.lutTemperature) + np.array(
-                axial_forces.lutGravity
+            # Check the force error
+            force_error = (
+                self.csc._mock_server.model.control_closed_loop._get_force_error()[0]
             )
-            measured = np.array(axial_forces.measured)
-            std_dev = np.std(measured - expected)
+
             force_rms = 0.5
-            self.assertTrue(std_dev < force_rms * 2.0)
-
-            # Check tangent forces
-            tangent_forces = await self.remote.tel_tangentForce.next(
-                flush=True, timeout=STD_TIMEOUT
-            )
-
-            mock_model = self.csc._mock_server.model
-            force = (
-                mock_model.mirror_weight
-                * np.sin(np.radians(mock_model.zenith_angle))
-                / 4.0
-                / np.cos(np.radians(30.0))
-            )
-            tangent_forces_expected = np.array(
-                [0.0, -force, force, 0.0, -force, -force]
-            )
-
-            for i, f in enumerate(tangent_forces_expected):
-                with self.subTest(test="Tangent actuator force.", actuator=i):
-                    self.assertEqual(f, tangent_forces.lutGravity[i])
+            self.assertLess(np.std(force_error), force_rms * 4.0)
 
     async def test_clearErrors(self):
         async with self.make_csc(
