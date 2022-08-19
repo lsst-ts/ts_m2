@@ -722,10 +722,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(incl_source.source, InclinationTelemetrySource.MTMOUNT)
 
             await self.csc_mtmount.tel_elevation.set_write(actualPosition=elevation + 1)
+            await asyncio.sleep(2)
 
-            zenith_angle = await self.remote.tel_zenithAngle.next(
-                flush=True, timeout=STD_TIMEOUT
-            )
+            zenith_angle = self.remote.tel_zenithAngle.get()
 
             # Need to consider the internal random variable in the simulation
             # of zenith angle in mock model.
