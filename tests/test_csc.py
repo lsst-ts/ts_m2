@@ -23,11 +23,10 @@ import asyncio
 import unittest
 
 import numpy as np
-
 from lsst.ts import salobj
-from lsst.ts.m2com import DetailedState, NUM_ACTUATOR, NUM_TANGENT_LINK
-from lsst.ts.m2 import M2
 from lsst.ts.idl.enums.MTM2 import InclinationTelemetrySource
+from lsst.ts.m2 import M2
+from lsst.ts.m2com import NUM_ACTUATOR, NUM_TANGENT_LINK, DetailedState
 
 # Timeout for fast operations (seconds)
 STD_TIMEOUT = 10
