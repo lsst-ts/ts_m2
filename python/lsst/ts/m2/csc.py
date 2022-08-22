@@ -19,20 +19,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import sys
 import asyncio
 import logging
+import sys
 import time
 
-from lsst.ts import tcpip
-from lsst.ts import salobj
-from lsst.ts.utils import make_done_future, index_generator
-from lsst.ts.m2com import MsgType, Controller, MockServer
+from lsst.ts import salobj, tcpip
+from lsst.ts.m2com import Controller, MockServer, MsgType
 from lsst.ts.m2com import __version__ as __m2com_version__
+from lsst.ts.utils import index_generator, make_done_future
 
+from . import ErrorCode, Translator, __version__
 from .config_schema import CONFIG_SCHEMA
-from . import ErrorCode, Translator
-from . import __version__
 
 __all__ = ["M2", "run_mtm2"]
 
