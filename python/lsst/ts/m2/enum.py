@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from enum import auto, IntEnum
+from enum import IntEnum, auto
 
 __all__ = ["ErrorCode"]
 
