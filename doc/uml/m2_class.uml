@@ -1,10 +1,8 @@
 @startuml
 package "m2com" #DDDDDD {
-  class MockServer
-  class Controller
+  class ControllerCell
 }
 
-M2 *-- Controller
+M2 *-- ControllerCell
 M2 *-- Translator
-M2 o-- MockServer
 @enduml
