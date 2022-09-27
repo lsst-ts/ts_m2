@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.7.0
+------
+
+* Adapt the **ControllerCell** class in **ts_m2com** to remove the duplicated code.
+
 v0.6.4
 ------
 

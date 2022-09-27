@@ -87,7 +87,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=0
         ):
 
-            self.assertIsNone(self.csc._mock_server)
+            self.assertIsNone(self.csc.controller_cell.mock_server)
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
 
     async def test_start(self):
@@ -111,7 +111,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(4)
 
             # Check the TCP/IP connection is on
-            self.assertIsNotNone(self.csc._mock_server)
+            self.assertIsNotNone(self.csc.controller_cell.mock_server)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
 
             # Simulate the MTMount CSC
@@ -119,7 +119,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self._simulate_csc_mount(elevation_angle)
 
             # There should be no update of inclinometer angle from MTMount CSC
-            mock_model = self.csc._mock_server.model
+            mock_model = self.csc.controller_cell.mock_server.model
             self.assertEqual(mock_model.control_open_loop.inclinometer_angle, 90)
 
             # Check the update of mount is in position or not from MTMount CSC
@@ -208,7 +208,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
-            self.assertFalse(self.csc._mock_server.are_servers_connected())
+            self.assertFalse(
+                self.csc.controller_cell.mock_server.are_servers_connected()
+            )
 
             # Check the summary state
             self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
@@ -221,7 +223,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
             # Make the server fault
-            mock_model = self.csc._mock_server.model
+            mock_model = self.csc.controller_cell.mock_server.model
             mock_model.fault()
             await asyncio.sleep(1)
 
@@ -229,7 +231,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
-            self.assertFalse(self.csc._mock_server.are_servers_connected())
+            self.assertFalse(
+                self.csc.controller_cell.mock_server.are_servers_connected()
+            )
 
             # Check the summary state
             self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
@@ -359,7 +363,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # sure I can get the controller's state event
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
-            self.assertTrue(self.csc._mock_server.are_servers_connected())
+            self.assertTrue(
+                self.csc.controller_cell.mock_server.are_servers_connected()
+            )
 
             # Check the last sequence ID
             self.assertEqual(
@@ -369,7 +375,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Enter the Standby state to close the connection
             await salobj.set_summary_state(self.remote, salobj.State.STANDBY)
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
-            self.assertFalse(self.csc._mock_server.are_servers_connected())
+            self.assertFalse(
+                self.csc.controller_cell.mock_server.are_servers_connected()
+            )
 
             # Second time of connection
 
@@ -377,7 +385,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # sure I can get the controller's state event
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
-            self.assertTrue(self.csc._mock_server.are_servers_connected())
+            self.assertTrue(
+                self.csc.controller_cell.mock_server.are_servers_connected()
+            )
 
             # Check the last sequence ID. Note the value should be 9 instead of
             # 3 from the previous connection.
@@ -409,14 +419,16 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             time_wait_connection_monitor_check = 2
             await asyncio.sleep(time_wait_connection_monitor_check)
 
-            await self.csc._mock_server.close()
+            await self.csc.controller_cell.mock_server.close()
 
             # Sleep some time to make sure the CSC detects the connection is
             # closed
             await asyncio.sleep(time_wait_connection_monitor_check)
 
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
-            self.assertFalse(self.csc._mock_server.are_servers_connected())
+            self.assertFalse(
+                self.csc.controller_cell.mock_server.are_servers_connected()
+            )
 
             self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
 
@@ -482,7 +494,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 axial=axial, tangent=tangent, timeout=STD_TIMEOUT
             )
 
-            mock_model = self.csc._mock_server.model
+            mock_model = self.csc.controller_cell.mock_server.model
             np.testing.assert_array_equal(
                 mock_model.control_closed_loop.axial_forces["applied"], axial
             )
@@ -567,7 +579,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
             # Check sending axial forces out of limit
-            mock_model = self.csc._mock_server.model
+            mock_model = self.csc.controller_cell.mock_server.model
 
             n_axial_actuators = NUM_ACTUATOR - NUM_TANGENT_LINK
             set_axial_force = np.zeros(n_axial_actuators)
@@ -774,9 +786,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertTrue(np.all(np.abs(axial_forces.lutTemperature) > 0.0))
 
             # Check the force error
-            force_error = (
-                self.csc._mock_server.model.control_closed_loop._get_force_error()[0]
-            )
+            force_error = self.csc.controller_cell.mock_server.model.control_closed_loop._get_force_error()[
+                0
+            ]
 
             force_rms = 0.5
             self.assertLess(np.std(force_error), force_rms * 4.0)
@@ -790,7 +802,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Fault the mock model and wait for some time to get the state
             # event
-            mock_model = self.csc._mock_server.model
+            mock_model = self.csc.controller_cell.mock_server.model
             mock_model.fault()
             await asyncio.sleep(1)
 

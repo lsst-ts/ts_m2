@@ -22,12 +22,10 @@
 import asyncio
 import logging
 import sys
-import time
 
-from lsst.ts import salobj, tcpip
-from lsst.ts.m2com import Controller, MockServer, MsgType
+from lsst.ts import salobj
+from lsst.ts.m2com import ControllerCell, MsgType
 from lsst.ts.m2com import __version__ as __m2com_version__
-from lsst.ts.utils import index_generator, make_done_future
 
 from . import ErrorCode, Translator, __version__
 from .config_schema import CONFIG_SCHEMA
@@ -68,12 +66,8 @@ class M2(salobj.ConfigurableCsc):
     ----------
     log : `logging.Logger`
         A logger.
-    timeout_in_second : `float`
-        Time limit for reading data from the TCP/IP interface (sec).
-    controller_cell : `Controller`
+    controller_cell : `lsst.ts.m2com.ControllerCell`
         Controller to do the TCP/IP communication with the servers of M2 cell.
-    stop_loop_timeout : `float`
-        Timeout of stoping loop in second.
     config : `types.SimpleNamespace` or None
         Namespace with configuration values.
     mtmount : `lsst.ts.salobj.Remote`
@@ -86,9 +80,6 @@ class M2(salobj.ConfigurableCsc):
 
     # Command timeout in second
     COMMAND_TIMEOUT = 10
-
-    # Maximum timeout to wait the telemetry in second
-    TELEMETRY_WAIT_TIMEOUT = 900
 
     def __init__(
         self,
@@ -116,45 +107,20 @@ class M2(salobj.ConfigurableCsc):
             self.log.addHandler(stream_handler)
             self.log.setLevel(logging.DEBUG)
 
-        # IP address of the TCP/IP interface
-        self._host = host
-
-        # Sequence generator
-        self._sequence_generator = index_generator()
-
-        # Command port number of the TCP/IP interface
-        self._port_command = port_command
-
-        # Telemetry port number of the TCP/IP interface
-        self._port_telemetry = port_telemetry
-
-        self.timeout_in_second = timeout_in_second
-        self.controller_cell = Controller(
-            log=self.log, timeout_in_second=self.timeout_in_second
+        self.controller_cell = ControllerCell(
+            log=self.log,
+            timeout_in_second=timeout_in_second,
+            is_csc=True,
+            host=host,
+            port_command=port_command,
+            port_telemetry=port_telemetry,
         )
 
         # Translator to translate the message from component for the SAL topic
         # to use
         self._translator = Translator()
 
-        # Mock server that is only needed in the simulation mode
-        self._mock_server = None
-
-        self.stop_loop_timeout = 5.0
-
         self.config = None
-
-        # Run the loops of telemetry and event or not
-        self._run_loops = False
-
-        # Task of the telemetry loop from component (asyncio.Future)
-        self._task_telemetry_loop = make_done_future()
-
-        # Task of the event loop from component (asyncio.Future)
-        self._task_event_loop = make_done_future()
-
-        # Task to monitor the connection status actively
-        self._task_connection_monitor_loop = make_done_future()
 
         # Remote to listen to MTMount position
         self.mtmount = salobj.Remote(
@@ -221,35 +187,9 @@ class M2(salobj.ConfigurableCsc):
 
     async def close_tasks(self):
 
-        await self.controller_cell.close()
-
-        if self._mock_server is not None:
-            await self._mock_server.close()
-            self._mock_server = None
-
-        try:
-            await self.stop_loops()
-        except Exception:
-            self.log.exception("Exception while stopping the loops. Ignoring...")
+        await self.controller_cell.close_tasks()
 
         await super().close_tasks()
-
-    async def stop_loops(self):
-        """Stop the loops."""
-
-        self._run_loops = False
-
-        for task in (
-            self._task_telemetry_loop,
-            self._task_event_loop,
-            self._task_connection_monitor_loop,
-        ):
-            try:
-                await asyncio.wait_for(task, timeout=self.stop_loop_timeout)
-            except asyncio.TimeoutError:
-                self.log.debug("Timed out waiting for the loop to finish. Canceling.")
-
-                task.cancel()
 
     async def handle_summary_state(self):
         """Handle summary state changes."""
@@ -259,68 +199,50 @@ class M2(salobj.ConfigurableCsc):
         # Run the mock server in the simulation mode
         # self.simulation_mode is the attribute from upstream: BaseCsc
         if (self.summary_state == salobj.State.STANDBY) and (
-            self._mock_server is not None
+            self.controller_cell.mock_server is not None
         ):
-            await self._mock_server.close()
-            self._mock_server = None
+            await self.controller_cell.mock_server.close()
+            self.controller_cell.mock_server = None
 
-        if (self.simulation_mode == 1) and (self._mock_server is None):
-
-            self._mock_server = MockServer(
-                tcpip.LOCAL_HOST,
-                port_command=0,
-                port_telemetry=0,
-                log=self.log,
-            )
-            # This is a hacking to get the configuration files in the STANDBY
-            # state
-            self._mock_server.model.configure(self.config_dir, "harrisLUT")
-            await self._mock_server.start()
+        if (self.simulation_mode == 1) and (self.controller_cell.mock_server is None):
+            await self.controller_cell.run_mock_server(self.config_dir, "harrisLUT")
 
         # Run the event and telemetry loops
-        if self._run_loops is False:
+        if self.controller_cell.run_loops is False:
 
-            self._run_loops = True
+            self.controller_cell.run_loops = True
 
             self.log.debug(
                 "Starting event, telemetry and connection monitor loop tasks."
             )
 
-            self._task_event_loop = asyncio.create_task(self._event_loop())
-            self._task_telemetry_loop = asyncio.create_task(self._telemetry_loop())
-            self._task_connection_monitor_loop = asyncio.create_task(
-                self._connection_monitor_loop()
+            self.controller_cell.start_task_event_loop(self._process_event)
+            self.controller_cell.start_task_telemetry_loop(self._process_telemetry)
+            self.controller_cell.start_task_connection_monitor_loop(
+                self._process_lost_connection
             )
 
-    async def _event_loop(self):
-        """Update and output event information from component."""
+    async def _process_event(self, message=None):
+        """Process the events from the M2 controller.
 
-        self.log.debug("Begin to run the event loop from component.")
+        Parameters
+        ----------
+        message : `dict` or None, optional
+            Message from the M2 controller. (the default is None)
+        """
 
-        while self._run_loops:
-
-            message = (
-                self.controller_cell.queue_event.get_nowait()
-                if not self.controller_cell.queue_event.empty()
-                else await self.controller_cell.queue_event.get()
-            )
-
-            # Publish the SAL event
+        # Publish the SAL event
+        if isinstance(message, dict):
             await self._publish_message_by_sal("evt_", message)
 
-            # Fault the CSC if the controller is in Fault
-            if (self.controller_cell.controller_state == salobj.State.FAULT) and (
-                self.summary_state != salobj.State.FAULT
-            ):
-                await self.fault(
-                    code=ErrorCode.ControllerInFault,
-                    report="Controller's state is Fault.",
-                )
-
-            else:
-                await asyncio.sleep(self.timeout_in_second)
-
-        self.log.debug("Stop the running of event loop from component.")
+        # Fault the CSC if the controller is in Fault
+        if (self.controller_cell.controller_state == salobj.State.FAULT) and (
+            self.summary_state != salobj.State.FAULT
+        ):
+            await self.fault(
+                code=ErrorCode.ControllerInFault,
+                report="Controller's state is Fault.",
+            )
 
     async def _publish_message_by_sal(self, prefix_sal_topic, message):
         """Publish the message from component by SAL.
@@ -347,100 +269,27 @@ class M2(salobj.ConfigurableCsc):
                 f"Unspecified message: {message_name_original}, ignoring..."
             )
 
-    async def _telemetry_loop(self):
-        """Update and output telemetry information from component."""
-
-        self.log.debug("Starting telemetry loop from component.")
-
-        time_wait_telemetry = 0.0
-        is_telemetry_timed_out = False
-
-        messages_consumed = 0
-        messages_consumed_log_timer = asyncio.create_task(
-            asyncio.sleep(self.heartbeat_interval)
-        )
-        while self._run_loops:
-
-            if self.controller_cell.are_clients_connected():
-
-                if (
-                    time_wait_telemetry >= self.TELEMETRY_WAIT_TIMEOUT
-                    and not is_telemetry_timed_out
-                ):
-                    self.log.warning(
-                        (
-                            "No telemetry for more than "
-                            f"{self.TELEMETRY_WAIT_TIMEOUT } seconds "
-                            "already. Is the internet OK?"
-                        )
-                    )
-                    time_wait_telemetry = 0.0
-                    is_telemetry_timed_out = True
-
-                # If there is no telemetry, sleep for some time
-                if self.controller_cell.client_telemetry.queue.empty():
-                    await asyncio.sleep(self.timeout_in_second)
-                    time_wait_telemetry += self.timeout_in_second
-                    continue
-
-                # There is the telemetry to publish
-                time_wait_telemetry = 0.0
-                if is_telemetry_timed_out:
-                    self.log.info("Receive the new telemetry again.")
-
-                is_telemetry_timed_out = False
-
-                message = self.controller_cell.client_telemetry.queue.get_nowait()
-                await self._publish_message_by_sal("tel_", message)
-                messages_consumed += 1
-                if messages_consumed_log_timer.done():
-                    self.log.debug(
-                        f"Consumed {messages_consumed/self.heartbeat_interval} messages/s."
-                    )
-                    messages_consumed = 0
-                    messages_consumed_log_timer = asyncio.create_task(
-                        asyncio.sleep(self.heartbeat_interval)
-                    )
-
-            else:
-                self.log.debug(
-                    f"Clients not connected. Waiting {self.timeout_in_second}s..."
-                )
-                await asyncio.sleep(self.timeout_in_second)
-
-        self.log.debug("Telemetry loop from component closed.")
-
-    async def _connection_monitor_loop(self, period=1):
-        """Actively monitor the connection status from component. Fault the
-        system if the connection is lost by itself.
+    async def _process_telemetry(self, message=None):
+        """Process the telemetry from the M2 controller.
 
         Parameters
         ----------
-        period : `float` or `int`, optional
-            Period to check the connection status in second. (the default is 1)
+        message : `dict` or None, optional
+            Message from the M2 controller. (the default is None)
         """
 
-        self.log.debug("Begin to run the connection monitor loop from component.")
+        # Publish the SAL telemetry
+        if isinstance(message, dict):
+            await self._publish_message_by_sal("tel_", message)
 
-        were_clients_connected = False
-        while self._run_loops:
+    async def _process_lost_connection(self):
+        """Process the lost of connection."""
 
-            if self.controller_cell.are_clients_connected():
-                were_clients_connected = True
-            else:
-                if were_clients_connected and self.disabled_or_enabled:
-                    were_clients_connected = False
-
-                    await self.controller_cell.close()
-
-                    await self.fault(
-                        code=ErrorCode.NoConnection,
-                        report="Lost the TCP/IP connection.",
-                    )
-
-            await asyncio.sleep(period)
-
-        self.log.debug("Connection monitor loop from component closed.")
+        if self.disabled_or_enabled:
+            await self.fault(
+                code=ErrorCode.NoConnection,
+                report="Lost the TCP/IP connection.",
+            )
 
     async def begin_start(self, data: salobj.type_hints.BaseDdsDataType) -> None:
 
@@ -461,56 +310,19 @@ class M2(salobj.ConfigurableCsc):
         ----------
         timeout : `float`
             Connection timeout in second.
-
-        Raises
-        ------
-        RuntimeError
-            If timeout in connection.
         """
 
         # Overwrite the connection information if needed
-        host = self._host if self._host is not None else self.config.host
-        port_command = (
-            self._port_command
-            if self._port_command is not None
-            else self.config.port_command
-        )
-        port_telemetry = (
-            self._port_telemetry
-            if self._port_telemetry is not None
-            else self.config.port_telemetry
-        )
+        if self.controller_cell.host is None:
+            self.controller_cell.host = self.config.host
 
-        # In the simulation mode, the ports of mock server are randomly
-        # assigned by the operation system.
-        # self.simulation_mode is the attribute from upstream: BaseCsc
-        if self.simulation_mode == 1:
-            port_command = self._mock_server.server_command.port
-            port_telemetry = self._mock_server.server_telemetry.port
+        if self.controller_cell.port_command is None:
+            self.controller_cell.port_command = self.config.port_command
 
-        self.log.debug(f"Host in connection request: {host}")
-        self.log.debug(f"Command port in connection request: {port_command}")
-        self.log.debug(f"Telemetry port in connection request: {port_telemetry}")
+        if self.controller_cell.port_telemetry is None:
+            self.controller_cell.port_telemetry = self.config.port_telemetry
 
-        self.controller_cell.start(
-            host,
-            port_command,
-            port_telemetry,
-            sequence_generator=self._sequence_generator,
-            timeout=timeout,
-        )
-
-        time_start = time.monotonic()
-        connection_pooling_time = 0.1
-        while not self.controller_cell.are_clients_connected() and (
-            (time.monotonic() - time_start) < timeout
-        ):
-            await asyncio.sleep(connection_pooling_time)
-
-        if not self.controller_cell.are_clients_connected():
-            raise RuntimeError(
-                f"Timeount in connection. Host: {host}, ports: {port_command} and {port_telemetry}"
-            )
+        await self.controller_cell.connect_server()
 
     async def begin_standby(self, data: salobj.type_hints.BaseDdsDataType) -> None:
         await self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
@@ -539,7 +351,7 @@ class M2(salobj.ConfigurableCsc):
         # Disconnect from the server
         await self.controller_cell.close()
 
-        await self.stop_loops()
+        await self.controller_cell.stop_loops()
 
         await super().do_standby(data)
 
@@ -604,7 +416,7 @@ class M2(salobj.ConfigurableCsc):
 
         Raises
         ------
-        ValueError
+        `ValueError`
             If the command (message_name) is not supported.
         """
 
