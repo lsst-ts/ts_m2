@@ -26,7 +26,7 @@ import numpy as np
 from lsst.ts import salobj
 from lsst.ts.idl.enums.MTM2 import InclinationTelemetrySource
 from lsst.ts.m2 import M2
-from lsst.ts.m2com import NUM_ACTUATOR, NUM_TANGENT_LINK, DetailedState
+from lsst.ts.m2com import NUM_ACTUATOR, NUM_TANGENT_LINK, DetailedState, MockErrorCode
 
 # Timeout for fast operations (seconds)
 STD_TIMEOUT = 10
@@ -224,7 +224,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Make the server fault
             mock_model = self.csc.controller_cell.mock_server.model
-            mock_model.fault()
+            mock_model.fault(MockErrorCode.LimitSwitchTriggeredClosedloop.value)
             await asyncio.sleep(1)
 
             self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
@@ -239,7 +239,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
 
             # Check the server fault
-            self.assertTrue(mock_model.error_cleared)
+            self.assertFalse(mock_model.error_handler.exists_error())
 
     async def test_standby_fault_accidental(self):
         async with self.make_csc(
@@ -803,7 +803,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Fault the mock model and wait for some time to get the state
             # event
             mock_model = self.csc.controller_cell.mock_server.model
-            mock_model.fault()
+            mock_model.fault(MockErrorCode.LimitSwitchTriggeredClosedloop.value)
             await asyncio.sleep(1)
 
             self.assertEqual(
@@ -820,7 +820,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Clear the error
             await self.remote.cmd_clearErrors.set_start(timeout=STD_TIMEOUT)
 
-            self.assertTrue(mock_model.error_cleared)
+            self.assertFalse(mock_model.error_handler.exists_error())
             await asyncio.sleep(1)
 
             self.assertEqual(
