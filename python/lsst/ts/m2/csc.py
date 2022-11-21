@@ -23,6 +23,7 @@ import asyncio
 import logging
 import sys
 
+import numpy as np
 from lsst.ts import salobj
 from lsst.ts.m2com import ControllerCell, MsgType
 from lsst.ts.m2com import __version__ as __m2com_version__
@@ -80,6 +81,10 @@ class M2(salobj.ConfigurableCsc):
 
     # Command timeout in second
     COMMAND_TIMEOUT = 10
+
+    # Limits of force in Newton
+    LIMIT_FORCE_AXIAL = 444.82  # 100 lbf
+    LIMIT_FORCE_TANGENT = 4893.04  # 1100 lbf
 
     def __init__(
         self,
@@ -464,12 +469,62 @@ class M2(salobj.ConfigurableCsc):
         message_name = "applyForces"
         self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
 
-        message_details = dict(axial=data.axial, tangent=data.tangent)
+        force_axial = data.axial
+        force_tangent = data.tangent
+        self._check_applied_forces_in_range(force_axial, force_tangent)
+
+        message_details = dict(axial=force_axial, tangent=force_tangent)
         await self._write_command_to_server(
             message_name,
             self.COMMAND_TIMEOUT,
             message_details=message_details,
         )
+
+    def _check_applied_forces_in_range(
+        self, applied_force_axial, applied_force_tangent
+    ):
+        """Check the applied forces are in the range or not at the moment.
+
+        Parameters
+        ----------
+        applied_force_axial : `list`
+            Applied axial forces in Newton.
+        applied_force_tangent : `list`
+            Applied tangent forces in Newton.
+
+        Raises
+        ------
+        `ValueError`
+            If the maximum axial force is out of range.
+        `ValueError`
+            If the maximum tangent force is out of range.
+        """
+
+        total_force_axial = np.array(applied_force_axial)
+        total_force_tangent = np.array(applied_force_tangent)
+
+        if self.tel_axialForce.has_data:
+            total_force_axial = total_force_axial + np.array(
+                self.tel_axialForce.data.measured
+            )
+
+        if self.tel_tangentForce.has_data:
+            total_force_tangent = total_force_tangent + np.array(
+                self.tel_tangentForce.data.measured
+            )
+
+        max_force_axial = np.max(np.abs(total_force_axial))
+        max_force_tangent = np.max(np.abs(total_force_tangent))
+
+        if max_force_axial >= self.LIMIT_FORCE_AXIAL:
+            raise ValueError(
+                f"Max axial force ({max_force_axial:.2f} N) >= {self.LIMIT_FORCE_AXIAL} N."
+            )
+
+        if max_force_tangent >= self.LIMIT_FORCE_TANGENT:
+            raise ValueError(
+                f"Max tangent force ({max_force_tangent:.2f} N) >= {self.LIMIT_FORCE_TANGENT} N."
+            )
 
     async def do_positionMirror(self, data):
         """Position Mirror.
