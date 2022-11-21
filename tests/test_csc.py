@@ -607,6 +607,27 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                     tangent=set_tangent_force, timeout=STD_TIMEOUT
                 )
 
+    async def test_check_applied_forces_in_range(self):
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+
+            # Check we have the force data from simulator or not
+            await asyncio.sleep(1)
+            self.assertTrue(self.csc.tel_axialForce.has_data)
+            self.assertTrue(self.csc.tel_tangentForce.has_data)
+
+            # Force is out of range
+            applied_force_axial = [0] * (NUM_ACTUATOR - NUM_TANGENT_LINK)
+            applied_force_tangent = [5000] * NUM_TANGENT_LINK
+            self.assertRaises(
+                ValueError,
+                self.csc._check_applied_forces_in_range,
+                applied_force_axial,
+                applied_force_tangent,
+            )
+
     async def test_positionMirror(self):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1

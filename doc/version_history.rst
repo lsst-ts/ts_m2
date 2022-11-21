@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.7.2
+------
+
+* Check the actuator forces before commanding the controller.
+
 v0.7.1
 ------
 
