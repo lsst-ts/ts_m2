@@ -159,8 +159,8 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 flush=False, timeout=STD_TIMEOUT
             )
             self.assertEqual(data_temp_offset.ring, [21] * 12)
-            self.assertEqual(data_temp_offset.intake, [21] * 2)
-            self.assertEqual(data_temp_offset.exhaust, [21] * 2)
+            self.assertEqual(data_temp_offset.intake, [0] * 2)
+            self.assertEqual(data_temp_offset.exhaust, [0] * 2)
 
             data_detailed_state_1 = await self.remote.evt_detailedState.next(
                 flush=False, timeout=STD_TIMEOUT
@@ -866,15 +866,8 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 timeout=STD_TIMEOUT
             )
             np.testing.assert_array_equal(data_temp_offset.ring, ring)
-            np.testing.assert_array_equal(data_temp_offset.intake, intake)
-            np.testing.assert_array_equal(data_temp_offset.exhaust, exhaust)
-
-            # Fail to change the offset
-            with self.assertRaises(salobj.AckError):
-                exhaust = [18] * 2
-                await self.remote.cmd_setTemperatureOffset.set_start(
-                    ring=ring, intake=intake, exhaust=exhaust
-                )
+            np.testing.assert_array_equal(data_temp_offset.intake, [0] * 2)
+            np.testing.assert_array_equal(data_temp_offset.exhaust, [0] * 2)
 
 
 if __name__ == "__main__":
