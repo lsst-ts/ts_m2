@@ -26,10 +26,17 @@ import numpy as np
 from lsst.ts import salobj
 from lsst.ts.idl.enums.MTM2 import InclinationTelemetrySource
 from lsst.ts.m2 import M2
-from lsst.ts.m2com import NUM_ACTUATOR, NUM_TANGENT_LINK, DetailedState, MockErrorCode
+from lsst.ts.m2com import (
+    LIMIT_FORCE_AXIAL_CLOSED_LOOP,
+    LIMIT_FORCE_TANGENT_CLOSED_LOOP,
+    NUM_ACTUATOR,
+    NUM_TANGENT_LINK,
+    DetailedState,
+    MockErrorCode,
+)
 
 # Timeout for fast operations (seconds)
-STD_TIMEOUT = 10
+STD_TIMEOUT = 15
 
 
 class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
@@ -583,7 +590,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             n_axial_actuators = NUM_ACTUATOR - NUM_TANGENT_LINK
             set_axial_force = np.zeros(n_axial_actuators)
-            set_axial_force[0] = mock_model.control_closed_loop.LIMIT_FORCE_AXIAL + 1.0
+            set_axial_force[0] = LIMIT_FORCE_AXIAL_CLOSED_LOOP + 1.0
 
             with self.assertRaises(
                 salobj.AckError,
@@ -595,9 +602,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check sending tangent forces out of limit
             set_tangent_force = np.zeros(NUM_TANGENT_LINK)
-            set_tangent_force[0] = (
-                mock_model.control_closed_loop.LIMIT_FORCE_TANGENT + 1.0
-            )
+            set_tangent_force[0] = LIMIT_FORCE_TANGENT_CLOSED_LOOP + 1.0
 
             with self.assertRaises(
                 salobj.AckError,
