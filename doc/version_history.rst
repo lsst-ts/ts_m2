@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.7.4
+------
+
+* Use the constants from **ts_m2com**.
+
 v0.7.3
 ------
 
