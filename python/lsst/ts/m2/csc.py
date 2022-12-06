@@ -25,7 +25,12 @@ import sys
 
 import numpy as np
 from lsst.ts import salobj
-from lsst.ts.m2com import ControllerCell, MsgType
+from lsst.ts.m2com import (
+    LIMIT_FORCE_AXIAL_CLOSED_LOOP,
+    LIMIT_FORCE_TANGENT_CLOSED_LOOP,
+    ControllerCell,
+    MsgType,
+)
 from lsst.ts.m2com import __version__ as __m2com_version__
 
 from . import ErrorCode, Translator, __version__
@@ -81,12 +86,6 @@ class M2(salobj.ConfigurableCsc):
 
     # Command timeout in second
     COMMAND_TIMEOUT = 10
-
-    # Limits of force in Newton
-    # They are hard-coded in the closed-loop control in ts_mtm2_cell.
-    # They are mentioned in "T14900-1001, rev 3, EUI Manual.docx" by vendor.
-    FORCE_LIMIT_AXIAL = 444.82  # 100 lbf
-    FORCE_LIMIT_TANGENT = 4893.04  # 1100 lbf
 
     def __init__(
         self,
@@ -518,14 +517,14 @@ class M2(salobj.ConfigurableCsc):
         max_force_axial = np.max(np.abs(total_force_axial))
         max_force_tangent = np.max(np.abs(total_force_tangent))
 
-        if max_force_axial >= self.FORCE_LIMIT_AXIAL:
+        if max_force_axial >= LIMIT_FORCE_AXIAL_CLOSED_LOOP:
             raise ValueError(
-                f"Max axial force ({max_force_axial:.2f} N) >= {self.FORCE_LIMIT_AXIAL} N."
+                f"Max axial force ({max_force_axial:.2f} N) >= {LIMIT_FORCE_AXIAL_CLOSED_LOOP} N."
             )
 
-        if max_force_tangent >= self.FORCE_LIMIT_TANGENT:
+        if max_force_tangent >= LIMIT_FORCE_TANGENT_CLOSED_LOOP:
             raise ValueError(
-                f"Max tangent force ({max_force_tangent:.2f} N) >= {self.FORCE_LIMIT_TANGENT} N."
+                f"Max tangent force ({max_force_tangent:.2f} N) >= {LIMIT_FORCE_TANGENT_CLOSED_LOOP} N."
             )
 
     async def do_positionMirror(self, data):
