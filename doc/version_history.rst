@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.7.5
+------
+
+* Increase the acknowledgement timeout in ``M2.begin_enable()`` command.
+* Ignore the errors in ``M2.do_standby()`` command.
+
 v0.7.4
 ------
 
