@@ -86,6 +86,7 @@ class M2(salobj.ConfigurableCsc):
 
     # Command timeout in second
     COMMAND_TIMEOUT = 10
+    COMMAND_TIMEOUT_LONG = 60
 
     def __init__(
         self,
@@ -337,22 +338,16 @@ class M2(salobj.ConfigurableCsc):
 
     async def do_standby(self, data):
 
-        # Try to transition the controller's state to OFFLINE state before
-        # closing the connection
-        if self.controller_cell.are_clients_connected():
+        # Try to clear the error if any
+        if self.controller_cell.controller_state == salobj.State.FAULT:
 
-            timeout = self.COMMAND_TIMEOUT
-
-            # Try to clear the error if any
-            if self.controller_cell.controller_state == salobj.State.FAULT:
+            try:
                 await self._clear_controller_errors()
 
-            await self._transition_controller_state(
-                salobj.State.DISABLED, "standby", timeout
-            )
-            await self._transition_controller_state(
-                salobj.State.STANDBY, "exitControl", timeout
-            )
+            except Exception as error:
+                self.log.warning(
+                    f"Ignoring the error when transitions to STANDBY state: {error}."
+                )
 
         # Disconnect from the server
         await self.controller_cell.close()
@@ -362,7 +357,7 @@ class M2(salobj.ConfigurableCsc):
         await super().do_standby(data)
 
     async def begin_enable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
-        await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+        await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT_LONG)
 
         return await super().begin_enable(data)
 
@@ -418,7 +413,7 @@ class M2(salobj.ConfigurableCsc):
         message_name : `str`
             Message name to do the state transition.
         timeout : `float`
-            Connection timeout in second.
+            Timeout of command in second.
 
         Raises
         ------
@@ -597,10 +592,11 @@ class M2(salobj.ConfigurableCsc):
         except OSError:
             await self.controller_cell.close()
 
-            await self.fault(
-                code=ErrorCode.NoConnection,
-                report="Lost the TCP/IP connection.",
-            )
+            if self.disabled_or_enabled:
+                await self.fault(
+                    code=ErrorCode.NoConnection,
+                    report="Lost the TCP/IP connection.",
+                )
 
     async def do_selectInclinationSource(self, data):
         """Command to select source of inclination data.
