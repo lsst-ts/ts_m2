@@ -639,13 +639,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         ):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
-            position_send = dict(
-                [
-                    (axis, np.random.normal())
-                    for axis in ("x", "y", "z", "xRot", "yRot", "zRot")
-                ]
-            )
-
             # Wait for m2AssemblyInPosition to be in position before applying
             # the force.
             in_position = (
@@ -663,6 +656,19 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # m2AssemblyInPosition is now in position, ready to reposition it.
             self.remote.evt_m2AssemblyInPosition.flush()
 
+            # Wait for some time for the closed-loop control to be done
+            await asyncio.sleep(STD_TIMEOUT)
+
+            # Move the rigid body to the new position. Note the units are um
+            # and arcsec.
+            position_send = {
+                "x": 100,
+                "y": 200,
+                "z": 300,
+                "xRot": 150,
+                "yRot": 250,
+                "zRot": 350,
+            }
             await self.remote.cmd_positionMirror.set_start(
                 **position_send, timeout=STD_TIMEOUT
             )
@@ -683,32 +689,23 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             self.assertTrue(in_position)
 
-            position_set = await self.remote.tel_position.next(
-                flush=True, timeout=STD_TIMEOUT
-            )
+            # Check the new position
+            tolerance = 50
 
+            position_set = self.remote.tel_position.get()
             for axis in ("x", "y", "z", "xRot", "yRot", "zRot"):
                 with self.subTest(telemetry="position", axis=axis):
-                    self.assertAlmostEqual(
-                        getattr(position_set, axis),
-                        position_send[axis],
-                        1,
-                        f"Position axis {axis}: position sent ({position_send[axis]}) "
-                        f"different than received {getattr(position_set, axis)}",
+                    self.assertLess(
+                        abs(getattr(position_set, axis) - position_send[axis]),
+                        tolerance,
                     )
 
-            position_ims_set = await self.remote.tel_positionIMS.next(
-                flush=True, timeout=STD_TIMEOUT
-            )
-
+            position_ims_set = self.remote.tel_positionIMS.get()
             for axis in ("x", "y", "z", "xRot", "yRot", "zRot"):
                 with self.subTest(telemetry="positionIMS", axis=axis):
-                    self.assertAlmostEqual(
-                        getattr(position_set, axis),
-                        position_send[axis],
-                        1,
-                        f"PositionIMS axis {axis}: position sent ({position_send[axis]}) "
-                        f"different than received {getattr(position_ims_set, axis)}",
+                    self.assertLess(
+                        abs(getattr(position_ims_set, axis) - position_send[axis]),
+                        tolerance,
                     )
 
     async def test_selectInclinationSource(self):
