@@ -93,7 +93,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=0
         ):
-
             self.assertIsNone(self.csc.controller_cell.mock_server)
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
 
@@ -418,7 +417,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
-
             # Enter the Disabled state to construct the connection
             await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
@@ -727,7 +725,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             n_samples = 10
             zenith_angle_values = np.zeros(n_samples)
             for i in range(n_samples):
-
                 zenith_angle = await self.remote.tel_zenithAngle.next(
                     flush=True, timeout=STD_TIMEOUT
                 )

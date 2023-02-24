@@ -29,7 +29,6 @@ class TestTranslator(unittest.TestCase):
         self.translator = Translator()
 
     def test_handle_tangent_force(self):
-
         message = dict(id="tangentForce", lutTemperature=[])
 
         message_payload = self.translator.translate(message)
@@ -37,7 +36,6 @@ class TestTranslator(unittest.TestCase):
         self.assertEqual(message_payload["lutTemperature"], [0] * 6)
 
     def test_handle_summary_state(self):
-
         message = dict(id="summaryState", summaryState=3)
 
         message_payload = self.translator.translate(message)
@@ -47,6 +45,5 @@ class TestTranslator(unittest.TestCase):
 
 
 if __name__ == "__main__":
-
     # Do the unit test
     unittest.main()

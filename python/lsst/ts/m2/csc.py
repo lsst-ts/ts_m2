@@ -193,7 +193,6 @@ class M2(salobj.ConfigurableCsc):
         )
 
     async def close_tasks(self):
-
         await self.controller_cell.close_tasks()
 
         await super().close_tasks()
@@ -216,7 +215,6 @@ class M2(salobj.ConfigurableCsc):
 
         # Run the event and telemetry loops
         if self.controller_cell.run_loops is False:
-
             self.controller_cell.run_loops = True
 
             self.log.debug(
@@ -299,13 +297,11 @@ class M2(salobj.ConfigurableCsc):
             )
 
     async def begin_start(self, data: salobj.type_hints.BaseDdsDataType) -> None:
-
         await self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         return await super().begin_start(data)
 
     async def do_start(self, data):
-
         await super().do_start(data)
 
         await self._connect_server(self.COMMAND_TIMEOUT)
@@ -337,10 +333,8 @@ class M2(salobj.ConfigurableCsc):
         return await super().begin_standby(data)
 
     async def do_standby(self, data):
-
         # Try to clear the error if any
         if self.controller_cell.controller_state == salobj.State.FAULT:
-
             try:
                 await self._clear_controller_errors()
 
@@ -362,7 +356,6 @@ class M2(salobj.ConfigurableCsc):
         return await super().begin_enable(data)
 
     async def do_enable(self, data):
-
         timeout = self.COMMAND_TIMEOUT
 
         await self._transition_controller_state(
@@ -384,7 +377,6 @@ class M2(salobj.ConfigurableCsc):
         return await super().begin_disable(data)
 
     async def do_disable(self, data):
-
         timeout = self.COMMAND_TIMEOUT
 
         await self._transition_controller_state(
