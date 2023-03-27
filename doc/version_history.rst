@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.7.8
+------
+
+* Support the mypy.
+
 v0.7.7
 ------
 

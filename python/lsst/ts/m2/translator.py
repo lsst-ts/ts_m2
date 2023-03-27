@@ -26,7 +26,7 @@ __all__ = ["Translator"]
 class Translator:
     """Translator class to translate the message from component."""
 
-    def translate(self, message):
+    def translate(self, message: dict) -> dict:
         """Translate the message from the component to let the SAL topic to
         use.
 
@@ -51,7 +51,7 @@ class Translator:
 
         return message_reformat
 
-    def _handle_tangent_force(self, message):
+    def _handle_tangent_force(self, message: dict) -> dict:
         """Handle the message of tangent force.
 
         The value of "lutTemperature" is [] because there is no correction of
@@ -72,7 +72,7 @@ class Translator:
 
         return message
 
-    def _handle_summary_state(self, message):
+    def _handle_summary_state(self, message: dict) -> dict:
         """Handle the message of summary state.
 
         Note: Reformat the summary state in controller to be the controller's
