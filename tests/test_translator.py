@@ -25,17 +25,17 @@ from lsst.ts.m2 import Translator
 
 
 class TestTranslator(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.translator = Translator()
 
-    def test_handle_tangent_force(self):
+    def test_handle_tangent_force(self) -> None:
         message = dict(id="tangentForce", lutTemperature=[])
 
         message_payload = self.translator.translate(message)
 
         self.assertEqual(message_payload["lutTemperature"], [0] * 6)
 
-    def test_handle_summary_state(self):
+    def test_handle_summary_state(self) -> None:
         message = dict(id="summaryState", summaryState=3)
 
         message_payload = self.translator.translate(message)

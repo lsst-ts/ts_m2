@@ -19,9 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import argparse
 import asyncio
 import logging
 import sys
+import types
+import typing
 
 import numpy as np
 from lsst.ts import salobj
@@ -56,7 +59,7 @@ class M2(salobj.ConfigurableCsc):
     timeout_in_second : `float`, optional
         Time limit for reading data from the TCP/IP interface (sec). (the
         default is 0.05)
-    config_dir : `str` or None, optional
+    config_dir : `str`, `pathlib.Path`, or None, optional
         Directory of configuration files, or None for the standard
         configuration directory (obtained from `_get_default_config_dir`).
         This is provided for unit testing.
@@ -90,15 +93,15 @@ class M2(salobj.ConfigurableCsc):
 
     def __init__(
         self,
-        host=None,
-        port_command=None,
-        port_telemetry=None,
-        timeout_in_second=0.05,
-        config_dir=None,
-        initial_state=salobj.State.STANDBY,
-        simulation_mode=0,
-        verbose=False,
-    ):
+        host: str | None = None,
+        port_command: int | None = None,
+        port_telemetry: int | None = None,
+        timeout_in_second: float = 0.05,
+        config_dir: salobj.PathType | None = None,
+        initial_state: salobj.State = salobj.State.STANDBY,
+        simulation_mode: int = 0,
+        verbose: bool = False,
+    ) -> None:
         super().__init__(
             "MTM2",
             index=0,
@@ -127,7 +130,7 @@ class M2(salobj.ConfigurableCsc):
         # to use
         self._translator = Translator()
 
-        self.config = None
+        self.config: types.SimpleNamespace | None = None
 
         # Remote to listen to MTMount position
         self.mtmount = salobj.Remote(
@@ -141,7 +144,7 @@ class M2(salobj.ConfigurableCsc):
         # Software version of the M2 common module
         self.evt_softwareVersions.set(subsystemVersions=f"ts-m2com={__m2com_version__}")
 
-    async def set_mount_elevation_callback(self, data):
+    async def set_mount_elevation_callback(self, data: salobj.BaseMsgType) -> None:
         """Callback function to set the mount elevation.
 
         Parameters
@@ -158,7 +161,9 @@ class M2(salobj.ConfigurableCsc):
                 comp_name="MTMount",
             )
 
-    async def set_mount_elevation_in_position_callback(self, data):
+    async def set_mount_elevation_in_position_callback(
+        self, data: salobj.BaseMsgType
+    ) -> None:
         """Callback function to notify the mount elevation in position.
 
         Parameters
@@ -175,7 +180,7 @@ class M2(salobj.ConfigurableCsc):
                 comp_name="MTMount",
             )
 
-    async def configure(self, config):
+    async def configure(self, config: types.SimpleNamespace) -> None:
         """Configure CSC.
 
         Parameters
@@ -192,12 +197,12 @@ class M2(salobj.ConfigurableCsc):
             f"Telemetry port in ts_config_mttcs: {self.config.port_telemetry}."
         )
 
-    async def close_tasks(self):
+    async def close_tasks(self) -> None:
         await self.controller_cell.close_tasks()
 
         await super().close_tasks()
 
-    async def handle_summary_state(self):
+    async def handle_summary_state(self) -> None:
         """Handle summary state changes."""
 
         self.log.debug(f"Handle summary state: {self.summary_state}.")
@@ -227,7 +232,7 @@ class M2(salobj.ConfigurableCsc):
                 self._process_lost_connection
             )
 
-    async def _process_event(self, message=None):
+    async def _process_event(self, message: dict | None = None) -> None:
         """Process the events from the M2 controller.
 
         Parameters
@@ -249,7 +254,9 @@ class M2(salobj.ConfigurableCsc):
                 report="Controller's state is Fault.",
             )
 
-    async def _publish_message_by_sal(self, prefix_sal_topic, message):
+    async def _publish_message_by_sal(
+        self, prefix_sal_topic: str, message: dict
+    ) -> None:
         """Publish the message from component by SAL.
 
         Parameters
@@ -274,7 +281,7 @@ class M2(salobj.ConfigurableCsc):
                 f"Unspecified message: {message_name_original}, ignoring..."
             )
 
-    async def _process_telemetry(self, message=None):
+    async def _process_telemetry(self, message: dict | None = None) -> None:
         """Process the telemetry from the M2 controller.
 
         Parameters
@@ -287,7 +294,7 @@ class M2(salobj.ConfigurableCsc):
         if isinstance(message, dict):
             await self._publish_message_by_sal("tel_", message)
 
-    async def _process_lost_connection(self):
+    async def _process_lost_connection(self) -> None:
         """Process the lost of connection."""
 
         if self.disabled_or_enabled:
@@ -296,17 +303,17 @@ class M2(salobj.ConfigurableCsc):
                 report="Lost the TCP/IP connection.",
             )
 
-    async def begin_start(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+    async def begin_start(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
-        return await super().begin_start(data)
+        await super().begin_start(data)
 
-    async def do_start(self, data):
+    async def do_start(self, data: salobj.BaseMsgType) -> None:
         await super().do_start(data)
 
         await self._connect_server(self.COMMAND_TIMEOUT)
 
-    async def _connect_server(self, timeout):
+    async def _connect_server(self, timeout: float) -> None:
         """Connect the TCP/IP server.
 
         Parameters
@@ -314,6 +321,9 @@ class M2(salobj.ConfigurableCsc):
         timeout : `float`
             Connection timeout in second.
         """
+
+        # Workaround of the mypy checking
+        assert self.config is not None
 
         # Overwrite the connection information if needed
         if self.controller_cell.host is None:
@@ -327,12 +337,12 @@ class M2(salobj.ConfigurableCsc):
 
         await self.controller_cell.connect_server()
 
-    async def begin_standby(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+    async def begin_standby(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
-        return await super().begin_standby(data)
+        await super().begin_standby(data)
 
-    async def do_standby(self, data):
+    async def do_standby(self, data: salobj.BaseMsgType) -> None:
         # Try to clear the error if any
         if self.controller_cell.controller_state == salobj.State.FAULT:
             try:
@@ -350,12 +360,12 @@ class M2(salobj.ConfigurableCsc):
 
         await super().do_standby(data)
 
-    async def begin_enable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+    async def begin_enable(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT_LONG)
 
-        return await super().begin_enable(data)
+        await super().begin_enable(data)
 
-    async def do_enable(self, data):
+    async def do_enable(self, data: salobj.BaseMsgType) -> None:
         timeout = self.COMMAND_TIMEOUT
 
         await self._transition_controller_state(
@@ -369,14 +379,14 @@ class M2(salobj.ConfigurableCsc):
 
         await super().do_enable(data)
 
-    async def begin_disable(self, data: salobj.type_hints.BaseDdsDataType) -> None:
+    async def begin_disable(self, data: salobj.BaseMsgType) -> None:
         # multiply timeout by 3 as this is the number of commands executed with
         # this timeout.
         await self.cmd_disable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT * 3)
 
-        return await super().begin_disable(data)
+        await super().begin_disable(data)
 
-    async def do_disable(self, data):
+    async def do_disable(self, data: salobj.BaseMsgType) -> None:
         timeout = self.COMMAND_TIMEOUT
 
         await self._transition_controller_state(
@@ -392,7 +402,9 @@ class M2(salobj.ConfigurableCsc):
 
         await super().do_disable(data)
 
-    async def _transition_controller_state(self, state_original, message_name, timeout):
+    async def _transition_controller_state(
+        self, state_original: salobj.State, message_name: str, timeout: float
+    ) -> None:
         """Transition the controller's state if possible.
 
         This function will only do the transition if the controller'state right
@@ -444,7 +456,7 @@ class M2(salobj.ConfigurableCsc):
                 report="Lost the TCP/IP connection.",
             )
 
-    async def do_applyForces(self, data):
+    async def do_applyForces(self, data: salobj.BaseMsgType) -> None:
         """Apply force.
 
         Parameters
@@ -469,8 +481,10 @@ class M2(salobj.ConfigurableCsc):
         )
 
     def _check_applied_forces_in_range(
-        self, applied_force_axial, applied_force_tangent
-    ):
+        self,
+        applied_force_axial: typing.List[float],
+        applied_force_tangent: typing.List[float],
+    ) -> None:
         """Check the applied forces are in the range or not at the moment.
 
         Parameters
@@ -514,7 +528,7 @@ class M2(salobj.ConfigurableCsc):
                 f"Max tangent force ({max_force_tangent:.2f} N) >= {LIMIT_FORCE_TANGENT_CLOSED_LOOP} N."
             )
 
-    async def do_positionMirror(self, data):
+    async def do_positionMirror(self, data: salobj.BaseMsgType) -> None:
         """Position Mirror.
 
         Parameters
@@ -538,7 +552,7 @@ class M2(salobj.ConfigurableCsc):
             message_details=message_details,
         )
 
-    async def do_resetForceOffsets(self, data):
+    async def do_resetForceOffsets(self, data: salobj.BaseMsgType) -> None:
         """Resets user defined forces to zeros.
 
         Parameters
@@ -558,7 +572,7 @@ class M2(salobj.ConfigurableCsc):
             self.COMMAND_TIMEOUT,
         )
 
-    async def do_clearErrors(self, data):
+    async def do_clearErrors(self, data: salobj.BaseMsgType) -> None:
         """Emulate clearError command.
 
         Parameters
@@ -569,14 +583,8 @@ class M2(salobj.ConfigurableCsc):
 
         await self._clear_controller_errors()
 
-    async def _clear_controller_errors(self):
-        """Clear the controller errors.
-
-        Parameters
-        ----------
-        data : `object`
-            Data of the SAL message.
-        """
+    async def _clear_controller_errors(self) -> None:
+        """Clear the controller errors."""
 
         try:
             await self.controller_cell.clear_errors()
@@ -590,7 +598,7 @@ class M2(salobj.ConfigurableCsc):
                     report="Lost the TCP/IP connection.",
                 )
 
-    async def do_selectInclinationSource(self, data):
+    async def do_selectInclinationSource(self, data: salobj.BaseMsgType) -> None:
         """Command to select source of inclination data.
 
         Parameters
@@ -612,7 +620,7 @@ class M2(salobj.ConfigurableCsc):
             message_details=message_details,
         )
 
-    async def do_setTemperatureOffset(self, data):
+    async def do_setTemperatureOffset(self, data: salobj.BaseMsgType) -> None:
         """Command to set temperature offset for the LUT temperature
         correction.
 
@@ -635,7 +643,7 @@ class M2(salobj.ConfigurableCsc):
             message_details=message_details,
         )
 
-    async def do_switchForceBalanceSystem(self, data):
+    async def do_switchForceBalanceSystem(self, data: salobj.BaseMsgType) -> None:
         """Command to switch force balance system on and off.
 
         Parameters
@@ -657,7 +665,9 @@ class M2(salobj.ConfigurableCsc):
             message_details=message_details,
         )
 
-    def _assert_enabled_csc_and_controller(self, message_name, allowed_curr_states):
+    def _assert_enabled_csc_and_controller(
+        self, message_name: str, allowed_curr_states: typing.List[salobj.State]
+    ) -> None:
         """Assert the CSC and controller are in ENABLED state.
 
         Parameters
@@ -671,8 +681,8 @@ class M2(salobj.ConfigurableCsc):
         self.assert_enabled()
 
     async def _write_command_to_server(
-        self, message_name, timeout, message_details=None
-    ):
+        self, message_name: str, timeout: float, message_details: dict | None = None
+    ) -> None:
         """Write the command to server.
 
         Parameters
@@ -701,11 +711,11 @@ class M2(salobj.ConfigurableCsc):
             )
 
     @staticmethod
-    def get_config_pkg():
+    def get_config_pkg() -> str:
         return "ts_config_mttcs"
 
     @classmethod
-    def add_arguments(cls, parser):
+    def add_arguments(cls, parser: argparse.ArgumentParser) -> None:
         super(M2, cls).add_arguments(parser)
 
         parser.add_argument(
@@ -741,7 +751,9 @@ class M2(salobj.ConfigurableCsc):
         )
 
     @classmethod
-    def add_kwargs_from_args(cls, args, kwargs):
+    def add_kwargs_from_args(
+        cls, args: argparse.Namespace, kwargs: typing.Dict[str, typing.Any]
+    ) -> None:
         super(M2, cls).add_kwargs_from_args(args, kwargs)
 
         kwargs["host"] = args.host
@@ -750,6 +762,6 @@ class M2(salobj.ConfigurableCsc):
         kwargs["verbose"] = args.verbose
 
 
-def run_mtm2():
+def run_mtm2() -> None:
     """Run the MTM2 CSC."""
     asyncio.run(M2.amain(0))
