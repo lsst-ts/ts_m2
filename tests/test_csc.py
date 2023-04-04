@@ -40,18 +40,23 @@ STD_TIMEOUT = 15
 
 
 class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
-    def basic_make_csc(self, initial_state, config_dir, simulation_mode):
+    def basic_make_csc(
+        self,
+        initial_state: salobj.State,
+        config_dir: salobj.PathType | None,
+        simulation_mode: int,
+    ) -> M2:
         return M2(
             config_dir=config_dir,
             initial_state=initial_state,
             simulation_mode=simulation_mode,
         )
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
-        self.csc_mtmount = None
+        self.csc_mtmount: salobj.Controller | None = None
 
-    async def _simulate_csc_mount(self, elevation_angle):
+    async def _simulate_csc_mount(self, elevation_angle: float) -> None:
         """Simulate the MTMount CSC.
 
         Parameters
@@ -73,7 +78,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         if self.csc_mtmount is not None:
             await self.csc_mtmount.close()
 
-    async def test_bin_script(self):
+    async def test_bin_script(self) -> None:
         await self.check_bin_script(
             name="MTM2",
             index=None,
@@ -89,14 +94,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             cmdline_args=["--host", "127.0.0.1", "--ports", "0", "1"],
         )
 
-    async def test_instantiation_m2_normal_mode(self):
+    async def test_instantiation_m2_normal_mode(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=0
         ):
             self.assertIsNone(self.csc.controller_cell.mock_server)
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
 
-    async def test_start(self):
+    async def test_start(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -204,7 +209,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(data_disp_sensors.thetaZ, [0] * 6)
             self.assertNotEqual(data_disp_sensors.deltaZ, [0] * 6)
 
-    async def test_standby_no_fault(self):
+    async def test_standby_no_fault(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -221,7 +226,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Check the summary state
             self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
 
-    async def test_standby_fault(self):
+    async def test_standby_fault(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -247,7 +252,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Check the server fault
             self.assertFalse(mock_model.error_handler.exists_error())
 
-    async def test_standby_fault_accidental(self):
+    async def test_standby_fault_accidental(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -259,7 +264,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
 
-    async def test_enable(self):
+    async def test_enable(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -277,7 +282,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 data_controller_state.controllerState, int(salobj.State.ENABLED)
             )
 
-    async def test_disable(self):
+    async def test_disable(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -298,7 +303,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 data_controller_state.controllerState, int(salobj.State.OFFLINE)
             )
 
-    async def test_command_fail_wrong_state(self):
+    async def test_command_fail_wrong_state(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -317,7 +322,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(salobj.AckError):
                 await self.remote.cmd_disable.set_start(timeout=STD_TIMEOUT)
 
-    async def test_check_standard_state_transitions(self):
+    async def test_check_standard_state_transitions(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -349,7 +354,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 salobj.State.STANDBY, timeout=STD_TIMEOUT
             )
 
-    async def test_set_summary_state(self):
+    async def test_set_summary_state(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -359,7 +364,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(self.csc.summary_state, salobj.State.ENABLED)
 
-    async def test_connection_multiple_times(self):
+    async def test_connection_multiple_times(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -401,7 +406,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 self.csc.controller_cell.client_command.last_sequence_id, 9
             )
 
-    async def test_telemetry_loop(self):
+    async def test_telemetry_loop(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -413,7 +418,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                         flush=True, timeout=STD_TIMEOUT
                     )
 
-    async def test_connection_monitor_loop(self):
+    async def test_connection_monitor_loop(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -437,7 +442,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
 
-    async def test_applyForces_wrong_controller_state(self):
+    async def test_applyForces_wrong_controller_state(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -459,7 +464,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                     axial=axial, tangent=tangent, timeout=STD_TIMEOUT
                 )
 
-    async def test_applyForces(self):
+    async def test_applyForces(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -610,7 +615,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                     tangent=set_tangent_force, timeout=STD_TIMEOUT
                 )
 
-    async def test_check_applied_forces_in_range(self):
+    async def test_check_applied_forces_in_range(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -631,7 +636,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 applied_force_tangent,
             )
 
-    async def test_positionMirror(self):
+    async def test_positionMirror(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -706,7 +711,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                         tolerance,
                     )
 
-    async def test_selectInclinationSource(self):
+    async def test_selectInclinationSource(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -753,6 +758,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(incl_source.source, InclinationTelemetrySource.MTMOUNT)
 
+            # Workaround of the mypy checking
+            assert self.csc_mtmount is not None
+
             await self.csc_mtmount.tel_elevation.set_write(actualPosition=elevation + 1)
             await asyncio.sleep(2)
 
@@ -762,7 +770,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # of zenith angle in mock model.
             self.assertLess(abs(zenith_angle.inclinometerRaw - elevation - 1), 3)
 
-    async def test_switchForceBalanceSystem(self):
+    async def test_switchForceBalanceSystem(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -813,7 +821,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             force_rms = 0.5
             self.assertLess(np.std(force_error), force_rms * 4.0)
 
-    async def test_clearErrors(self):
+    async def test_clearErrors(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -847,7 +855,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 self.csc.controller_cell.controller_state, salobj.State.OFFLINE
             )
 
-    async def test_setTemperatureOffset(self):
+    async def test_setTemperatureOffset(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
