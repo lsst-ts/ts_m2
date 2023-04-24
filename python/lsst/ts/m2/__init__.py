@@ -26,6 +26,6 @@ except ImportError:
     __version__ = "?"
 
 from .config_schema import *
+from .csc import *
 from .enum import *
 from .translator import *
-from .csc import *

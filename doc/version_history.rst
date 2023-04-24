@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.7.9
+------
+
+* Adapt the **.ts_pre_commit_config.yaml**.
+
 v0.7.8
 ------
 
