@@ -36,8 +36,10 @@ from lsst.ts.m2com import (
 )
 from lsst.ts.m2com import __version__ as __m2com_version__
 
-from . import ErrorCode, Translator, __version__
+from . import __version__
 from .config_schema import CONFIG_SCHEMA
+from .enum import ErrorCode
+from .translator import Translator
 
 __all__ = ["M2", "run_mtm2"]
 

@@ -7,16 +7,16 @@ import lsst.ts.m2
 from documenteer.conf.pipelinespkg import *
 
 project = "ts_m2"
-html_theme_options["logotext"] = project
+html_theme_options["logotext"] = project  # type: ignore # noqa
 html_title = project
 html_short_title = project
-doxylink = {}  # Avoid warning: Could not find tag file _doxygen/doxygen.tag
+doxylink = {}  # type: ignore # noqa
 
-intersphinx_mapping["ts_xml"] = ("https://ts-xml.lsst.io", None)
-intersphinx_mapping["ts_salobj"] = ("https://ts-salobj.lsst.io", None)
+intersphinx_mapping["ts_xml"] = ("https://ts-xml.lsst.io", None)  # type: ignore # noqa
+intersphinx_mapping["ts_salobj"] = ("https://ts-salobj.lsst.io", None)  # type: ignore # noqa
 
 # Support the sphinx extension of plantuml
-extensions.append("sphinxcontrib.plantuml")
+extensions.append("sphinxcontrib.plantuml")  # type: ignore # noqa
 
 # Put the path to plantuml.jar
 plantuml = "java -jar /home/saluser/plantuml.jar"
