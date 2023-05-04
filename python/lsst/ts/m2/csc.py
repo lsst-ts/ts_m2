@@ -362,12 +362,9 @@ class M2(salobj.ConfigurableCsc):
 
         await super().do_standby(data)
 
-    async def begin_enable(self, data: salobj.BaseMsgType) -> None:
+    async def do_enable(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT_LONG)
 
-        await super().begin_enable(data)
-
-    async def do_enable(self, data: salobj.BaseMsgType) -> None:
         timeout = self.COMMAND_TIMEOUT
 
         await self._transition_controller_state(
