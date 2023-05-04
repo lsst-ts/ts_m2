@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.7.10
+------
+
+* Let ``M2.do_enable()`` call ``self.cmd_enable.ack_in_progress()`` directly and remove the ``M2.begin_enable()``.
+
 v0.7.9
 ------
 
