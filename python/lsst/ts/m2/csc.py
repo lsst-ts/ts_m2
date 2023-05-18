@@ -276,7 +276,12 @@ class M2(salobj.ConfigurableCsc):
 
         if hasattr(self, sal_topic_name):
             message_payload.pop("id")
-            await getattr(self, sal_topic_name).set_write(**message_payload)
+
+            try:
+                await getattr(self, sal_topic_name).set_write(**message_payload)
+            except Exception as error:
+                self.log.debug(f"Error in publishing data: {error!r}.")
+
         else:
             message_name_original = message["id"]
             self.log.warning(

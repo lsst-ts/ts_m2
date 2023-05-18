@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.7.11
+------
+
+* Deal with the condition that the controller's data might not be completed.
+
 v0.7.10
 ------
 
