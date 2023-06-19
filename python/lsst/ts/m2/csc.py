@@ -164,8 +164,9 @@ class M2(salobj.ConfigurableCsc):
     ) -> None:
         """Callback function to notify the mount elevation in position.
 
-        Note. This function will be removed after the CSC communicates with
-        the cRIO directly.
+        .. deprecated:: 0.8.0
+            This function will be removed after the CSC communicates with the
+            cRIO directly.
 
         Parameters
         ----------
@@ -475,7 +476,7 @@ class M2(salobj.ConfigurableCsc):
         force_tangent = data.tangent
         self._check_applied_forces_in_range(force_axial, force_tangent)
 
-        await self._execute_command_to_server(
+        await self._execute_command(
             self.controller_cell.apply_forces,
             force_axial,
             force_tangent,
@@ -545,7 +546,7 @@ class M2(salobj.ConfigurableCsc):
             "positionMirror", [salobj.State.ENABLED]
         )
 
-        await self._execute_command_to_server(
+        await self._execute_command(
             self.controller_cell.position_mirror,
             data.x,
             data.y,
@@ -571,7 +572,7 @@ class M2(salobj.ConfigurableCsc):
             "resetForceOffsets", [salobj.State.ENABLED]
         )
 
-        await self._execute_command_to_server(
+        await self._execute_command(
             self.controller_cell.reset_force_offsets,
         )
 
@@ -625,9 +626,7 @@ class M2(salobj.ConfigurableCsc):
             enable_angle_comparison=use_mtmount,
         )
 
-        await self._execute_command_to_server(
-            self.controller_cell.set_control_parameters
-        )
+        await self._execute_command(self.controller_cell.set_control_parameters)
 
     async def do_setTemperatureOffset(self, data: salobj.BaseMsgType) -> None:
         """Command to set temperature offset for the LUT temperature
@@ -646,7 +645,7 @@ class M2(salobj.ConfigurableCsc):
             "setTemperatureOffset", [salobj.State.ENABLED]
         )
 
-        await self._execute_command_to_server(
+        await self._execute_command(
             self.controller_cell.set_temperature_offset,
             data.ring,
             data.intake,
@@ -669,7 +668,7 @@ class M2(salobj.ConfigurableCsc):
             "switchForceBalanceSystem", [salobj.State.ENABLED]
         )
 
-        await self._execute_command_to_server(
+        await self._execute_command(
             self.controller_cell.switch_force_balance_system,
             data.status,
         )
@@ -689,14 +688,18 @@ class M2(salobj.ConfigurableCsc):
         self.controller_cell.assert_controller_state(message_name, allowed_curr_states)
         self.assert_enabled()
 
-    async def _execute_command_to_server(
+    async def _execute_command(
         self,
         command: typing.Coroutine,
         *args: typing.Any,
         timeout: float | None = None,
         **kwargs: dict[str, typing.Any],
     ) -> None:
-        """Execute the command to server.
+        """Execute the command to controller.
+
+        Notes
+        -----
+        This function captures the OSError and sends the CSC to fault.
 
         Parameters
         ----------
@@ -717,6 +720,7 @@ class M2(salobj.ConfigurableCsc):
             await command(*args, timeout=timeout, **kwargs)  # type: ignore[operator]
 
         except OSError:
+            self.log.exception("Connection error executing command.")
             await self.controller_cell.close()
 
             await self.fault(
