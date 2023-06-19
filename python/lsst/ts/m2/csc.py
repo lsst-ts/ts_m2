@@ -28,6 +28,7 @@ import typing
 
 import numpy as np
 from lsst.ts import salobj
+from lsst.ts.idl.enums import MTM2
 from lsst.ts.m2com import (
     LIMIT_FORCE_AXIAL_CLOSED_LOOP,
     LIMIT_FORCE_TANGENT_CLOSED_LOOP,
@@ -156,17 +157,16 @@ class M2(salobj.ConfigurableCsc):
         """
 
         if self.controller_cell.are_clients_connected():
-            await self.controller_cell.client_telemetry.write(
-                MsgType.Telemetry,
-                "elevation",
-                msg_details=dict(actualPosition=data.actualPosition),
-                comp_name="MTMount",
-            )
+            await self.controller_cell.set_external_elevation_angle(data.actualPosition)
 
     async def set_mount_elevation_in_position_callback(
         self, data: salobj.BaseMsgType
     ) -> None:
         """Callback function to notify the mount elevation in position.
+
+        .. deprecated:: 0.8.0
+            This function will be removed after the CSC communicates with the
+            cRIO directly.
 
         Parameters
         ----------
@@ -470,18 +470,16 @@ class M2(salobj.ConfigurableCsc):
         """
         await self.cmd_applyForces.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
-        message_name = "applyForces"
-        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
+        self._assert_enabled_csc_and_controller("applyForces", [salobj.State.ENABLED])
 
         force_axial = data.axial
         force_tangent = data.tangent
         self._check_applied_forces_in_range(force_axial, force_tangent)
 
-        message_details = dict(axial=force_axial, tangent=force_tangent)
-        await self._write_command_to_server(
-            message_name,
-            self.COMMAND_TIMEOUT,
-            message_details=message_details,
+        await self._execute_command(
+            self.controller_cell.apply_forces,
+            force_axial,
+            force_tangent,
         )
 
     def _check_applied_forces_in_range(
@@ -544,16 +542,18 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT
         )
 
-        message_name = "positionMirror"
-        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
-
-        message_details = dict(
-            x=data.x, y=data.y, z=data.z, xRot=data.xRot, yRot=data.yRot, zRot=data.zRot
+        self._assert_enabled_csc_and_controller(
+            "positionMirror", [salobj.State.ENABLED]
         )
-        await self._write_command_to_server(
-            message_name,
-            self.COMMAND_TIMEOUT,
-            message_details=message_details,
+
+        await self._execute_command(
+            self.controller_cell.position_mirror,
+            data.x,
+            data.y,
+            data.z,
+            data.xRot,
+            data.yRot,
+            data.zRot,
         )
 
     async def do_resetForceOffsets(self, data: salobj.BaseMsgType) -> None:
@@ -568,12 +568,12 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT
         )
 
-        message_name = "resetForceOffsets"
-        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
+        self._assert_enabled_csc_and_controller(
+            "resetForceOffsets", [salobj.State.ENABLED]
+        )
 
-        await self._write_command_to_server(
-            message_name,
-            self.COMMAND_TIMEOUT,
+        await self._execute_command(
+            self.controller_cell.reset_force_offsets,
         )
 
     async def do_clearErrors(self, data: salobj.BaseMsgType) -> None:
@@ -614,15 +614,19 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT
         )
 
-        message_name = "selectInclinationSource"
-        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
-
-        message_details = dict(source=data.source)
-        await self._write_command_to_server(
-            message_name,
-            self.COMMAND_TIMEOUT,
-            message_details=message_details,
+        self._assert_enabled_csc_and_controller(
+            "selectInclinationSource", [salobj.State.ENABLED]
         )
+
+        source = MTM2.InclinationTelemetrySource(data.source)
+        use_mtmount = source == MTM2.InclinationTelemetrySource.MTMOUNT
+
+        self.controller_cell.select_inclination_source(
+            use_external_elevation_angle=use_mtmount,
+            enable_angle_comparison=use_mtmount,
+        )
+
+        await self._execute_command(self.controller_cell.set_control_parameters)
 
     async def do_setTemperatureOffset(self, data: salobj.BaseMsgType) -> None:
         """Command to set temperature offset for the LUT temperature
@@ -637,14 +641,15 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT
         )
 
-        message_name = "setTemperatureOffset"
-        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
+        self._assert_enabled_csc_and_controller(
+            "setTemperatureOffset", [salobj.State.ENABLED]
+        )
 
-        message_details = dict(ring=data.ring, intake=data.intake, exhaust=data.exhaust)
-        await self._write_command_to_server(
-            message_name,
-            self.COMMAND_TIMEOUT,
-            message_details=message_details,
+        await self._execute_command(
+            self.controller_cell.set_temperature_offset,
+            data.ring,
+            data.intake,
+            data.exhaust,
         )
 
     async def do_switchForceBalanceSystem(self, data: salobj.BaseMsgType) -> None:
@@ -659,14 +664,13 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT
         )
 
-        message_name = "switchForceBalanceSystem"
-        self._assert_enabled_csc_and_controller(message_name, [salobj.State.ENABLED])
+        self._assert_enabled_csc_and_controller(
+            "switchForceBalanceSystem", [salobj.State.ENABLED]
+        )
 
-        message_details = dict(status=data.status)
-        await self._write_command_to_server(
-            message_name,
-            self.COMMAND_TIMEOUT,
-            message_details=message_details,
+        await self._execute_command(
+            self.controller_cell.switch_force_balance_system,
+            data.status,
         )
 
     def _assert_enabled_csc_and_controller(
@@ -684,29 +688,39 @@ class M2(salobj.ConfigurableCsc):
         self.controller_cell.assert_controller_state(message_name, allowed_curr_states)
         self.assert_enabled()
 
-    async def _write_command_to_server(
-        self, message_name: str, timeout: float, message_details: dict | None = None
+    async def _execute_command(
+        self,
+        command: typing.Coroutine,
+        *args: typing.Any,
+        timeout: float | None = None,
+        **kwargs: dict[str, typing.Any],
     ) -> None:
-        """Write the command to server.
+        """Execute the command to controller.
+
+        Notes
+        -----
+        This function captures the OSError and sends the CSC to fault.
 
         Parameters
         ----------
-        message_name : `str`
-            Message name to server.
-        timeout : `float`
-            Timeout of command in second.
-        message_details : `dict` or None, optional
-            Message details. (the default is None)
+        command : `coroutine`
+            Command.
+        *args : `args`
+            Arguments of the command.
+        timeout : `float` or None, optional
+            Timeout of command in second. If None, the default value is used.
+            (the default is None)
+        **kwargs : `dict`, optional
+            Additional keyword arguments to run the command.
         """
 
+        timeout = self.COMMAND_TIMEOUT if (timeout is None) else timeout
+
         try:
-            await self.controller_cell.write_command_to_server(
-                message_name,
-                message_details=message_details,
-                timeout=timeout,
-            )
+            await command(*args, timeout=timeout, **kwargs)  # type: ignore[operator]
 
         except OSError:
+            self.log.exception("Connection error executing command.")
             await self.controller_cell.close()
 
             await self.fault(

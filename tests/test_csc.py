@@ -31,6 +31,9 @@ from lsst.ts.m2com import (
     LIMIT_FORCE_TANGENT_CLOSED_LOOP,
     NUM_ACTUATOR,
     NUM_TANGENT_LINK,
+    NUM_TEMPERATURE_EXHAUST,
+    NUM_TEMPERATURE_INTAKE,
+    NUM_TEMPERATURE_RING,
     DetailedState,
     MockErrorCode,
 )
@@ -126,12 +129,12 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
 
             # Simulate the MTMount CSC
-            elevation_angle = 10
+            elevation_angle = 10.0
             await self._simulate_csc_mount(elevation_angle)
 
             # There should be no update of inclinometer angle from MTMount CSC
             mock_model = self.csc.controller_cell.mock_server.model
-            self.assertEqual(mock_model.control_open_loop.inclinometer_angle, 90)
+            self.assertEqual(mock_model.control_open_loop.inclinometer_angle, 90.0)
 
             # Check the update of mount is in position or not from MTMount CSC
             self.assertEqual(mock_model.mtmount_in_position, True)
@@ -169,9 +172,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             data_temp_offset = await self.remote.evt_temperatureOffset.next(
                 flush=False, timeout=STD_TIMEOUT
             )
-            self.assertEqual(data_temp_offset.ring, [21] * 12)
-            self.assertEqual(data_temp_offset.intake, [0] * 2)
-            self.assertEqual(data_temp_offset.exhaust, [0] * 2)
+            self.assertEqual(data_temp_offset.ring, [21.0] * NUM_TEMPERATURE_RING)
+            self.assertEqual(data_temp_offset.intake, [0.0] * NUM_TEMPERATURE_INTAKE)
+            self.assertEqual(data_temp_offset.exhaust, [0.0] * NUM_TEMPERATURE_EXHAUST)
 
             data_detailed_state_1 = await self.remote.evt_detailedState.next(
                 flush=False, timeout=STD_TIMEOUT
@@ -862,9 +865,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
             # Change the offset successfully
-            ring = [19] * 12
-            intake = [19] * 2
-            exhaust = [19] * 2
+            ring = [19.0] * NUM_TEMPERATURE_RING
+            intake = [19.0] * NUM_TEMPERATURE_INTAKE
+            exhaust = [19.0] * NUM_TEMPERATURE_EXHAUST
             await self.remote.cmd_setTemperatureOffset.set_start(
                 ring=ring, intake=intake, exhaust=exhaust
             )
@@ -873,8 +876,12 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 timeout=STD_TIMEOUT
             )
             np.testing.assert_array_equal(data_temp_offset.ring, ring)
-            np.testing.assert_array_equal(data_temp_offset.intake, [0] * 2)
-            np.testing.assert_array_equal(data_temp_offset.exhaust, [0] * 2)
+            np.testing.assert_array_equal(
+                data_temp_offset.intake, [0.0] * NUM_TEMPERATURE_INTAKE
+            )
+            np.testing.assert_array_equal(
+                data_temp_offset.exhaust, [0.0] * NUM_TEMPERATURE_EXHAUST
+            )
 
 
 if __name__ == "__main__":
