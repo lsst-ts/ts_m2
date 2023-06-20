@@ -764,14 +764,13 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Workaround of the mypy checking
             assert self.csc_mtmount is not None
 
-            await self.csc_mtmount.tel_elevation.set_write(actualPosition=elevation + 1)
+            await self.csc_mtmount.tel_elevation.set_write(actualPosition=elevation)
             await asyncio.sleep(2)
 
-            zenith_angle = self.remote.tel_zenithAngle.get()
-
-            # Need to consider the internal random variable in the simulation
-            # of zenith angle in mock model.
-            self.assertLess(abs(zenith_angle.inclinometerRaw - elevation - 1), 3)
+            self.assertEqual(
+                self.csc.controller_cell.mock_server.model.inclinometer_angle_external,
+                elevation,
+            )
 
     async def test_switchForceBalanceSystem(self) -> None:
         async with self.make_csc(
