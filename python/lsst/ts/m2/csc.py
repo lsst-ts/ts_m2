@@ -175,7 +175,7 @@ class M2(salobj.ConfigurableCsc):
         """
 
         if self.controller_cell.are_clients_connected():
-            await self.controller_cell.client_command.write(
+            await self.controller_cell.client_command.write_message(
                 MsgType.Event,
                 "mountInPosition",
                 msg_details=dict(inPosition=data.inPosition),
