@@ -2,10 +2,15 @@
 Version History
 ===============
 
+v0.8.2
+-------
+
+* Fix the test related to **ts_m2com** v1.0.0.
+
 v0.8.1
 -------
 
-* Fix the test related to **ts_m2com** v0.11.1.
+* Fix the test related to **ts_m2com** v0.12.0.
 
 v0.8.0
 -------
