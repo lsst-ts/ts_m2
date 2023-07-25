@@ -34,7 +34,8 @@ from lsst.ts.m2com import (
     NUM_TEMPERATURE_EXHAUST,
     NUM_TEMPERATURE_INTAKE,
     NUM_TEMPERATURE_RING,
-    DetailedState,
+    ClosedLoopControlMode,
+    DigitalOutputStatus,
     MockErrorCode,
 )
 
@@ -72,7 +73,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         await self.csc_mtmount.start_task
 
         await self.csc_mtmount.tel_elevation.set_write(actualPosition=elevation_angle)
-        await self.csc_mtmount.evt_elevationInPosition.set_write(inPosition=True)
 
         # Wait for some time to publish the telemetry of MTMount
         await asyncio.sleep(1)
@@ -136,9 +136,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             mock_model = self.csc.controller_cell.mock_server.model
             self.assertEqual(mock_model.control_open_loop.inclinometer_angle, 90.0)
 
-            # Check the update of mount is in position or not from MTMount CSC
-            self.assertEqual(mock_model.mtmount_in_position, True)
-
             # Check the welcome messages
             data_tcpIp = await self.remote.evt_tcpIpConnected.next(
                 flush=False, timeout=STD_TIMEOUT
@@ -176,27 +173,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data_temp_offset.intake, [0.0] * NUM_TEMPERATURE_INTAKE)
             self.assertEqual(data_temp_offset.exhaust, [0.0] * NUM_TEMPERATURE_EXHAUST)
 
-            data_detailed_state_1 = await self.remote.evt_detailedState.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertEqual(
-                data_detailed_state_1.detailedState, DetailedState.PublishOnly
-            )
-
-            data_detailed_state_2 = await self.remote.evt_detailedState.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertEqual(
-                data_detailed_state_2.detailedState, DetailedState.Available
-            )
-
-            data_controller_state = await self.remote.evt_controllerState.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertEqual(
-                data_controller_state.controllerState, int(salobj.State.OFFLINE)
-            )
-
             # Check the telemetry in OFFLINE state
             data_power_status = await self.remote.tel_powerStatus.next(
                 flush=False, timeout=STD_TIMEOUT
@@ -233,13 +209,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
-            # Enter the Disabled state to construct the connection
+            # Enter the Enabled state first
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
+            await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
             # Make the server fault
             mock_model = self.csc.controller_cell.mock_server.model
             mock_model.fault(MockErrorCode.LimitSwitchTriggeredClosedloop.value)
-            await asyncio.sleep(1)
+            await asyncio.sleep(5)
 
             self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
 
@@ -277,13 +254,34 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Go to the Enabled state
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
-            # Check the event of controller's state
-            data_controller_state = await self.remote.evt_controllerState.aget(
-                timeout=STD_TIMEOUT
-            )
+            # Check all ILCs are enabled and the system is under the
+            # closed-loop control
+            self.assertTrue(self.csc.controller_cell.are_ilc_modes_enabled())
             self.assertEqual(
-                data_controller_state.controllerState, int(salobj.State.ENABLED)
+                self.csc.controller_cell.closed_loop_control_mode,
+                ClosedLoopControlMode.ClosedLoop,
             )
+
+    async def test_enable_interlock(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            # Enter the Disabled state to construct the connection
+            await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
+
+            # Go to the Enabled state
+            await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
+
+            # Trigger the interlock fault
+            await self.csc.controller_cell.set_bit_digital_status(
+                2, DigitalOutputStatus.BinaryLowLevel
+            )
+
+            # Wait a little time to process the data
+            await asyncio.sleep(3)
+
+            # The interlock event should transition the system to Fault state
+            self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
 
     async def test_disable(self) -> None:
         async with self.make_csc(
@@ -298,12 +296,16 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Go to the Disabled state
             await self.remote.cmd_disable.set_start(timeout=STD_TIMEOUT)
 
-            # Check the event of controller's state
-            data_controller_state = await self.remote.evt_controllerState.aget(
-                timeout=STD_TIMEOUT
-            )
+            # Check the motor's power is off and the communication power is
+            # still on
+            power_system_status = self.csc.controller_cell.power_system_status
+            self.assertFalse(power_system_status["motor_power_is_on"])
+            self.assertTrue(power_system_status["communication_power_is_on"])
+
+            # The system will only publish the telemetry
             self.assertEqual(
-                data_controller_state.controllerState, int(salobj.State.OFFLINE)
+                self.csc.controller_cell.closed_loop_control_mode,
+                ClosedLoopControlMode.TelemetryOnly,
             )
 
     async def test_command_fail_wrong_state(self) -> None:
@@ -319,7 +321,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
             # Enter the Disabled state to construct the connection
-            await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
             with self.assertRaises(salobj.AckError):
@@ -333,6 +334,8 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # used here because I need time to let the connection to be
             # constructed
 
+            self.assertFalse(self.csc.system_is_ready)
+
             await self.assert_next_summary_state(
                 salobj.State.STANDBY, timeout=STD_TIMEOUT
             )
@@ -342,20 +345,28 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 salobj.State.DISABLED, timeout=STD_TIMEOUT
             )
 
+            self.assertFalse(self.csc.system_is_ready)
+
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
             await self.assert_next_summary_state(
                 salobj.State.ENABLED, timeout=STD_TIMEOUT
             )
+
+            self.assertTrue(self.csc.system_is_ready)
 
             await self.remote.cmd_disable.set_start(timeout=STD_TIMEOUT)
             await self.assert_next_summary_state(
                 salobj.State.DISABLED, timeout=STD_TIMEOUT
             )
 
+            self.assertFalse(self.csc.system_is_ready)
+
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
             await self.assert_next_summary_state(
                 salobj.State.STANDBY, timeout=STD_TIMEOUT
             )
+
+            self.assertFalse(self.csc.system_is_ready)
 
     async def test_set_summary_state(self) -> None:
         async with self.make_csc(
@@ -383,7 +394,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check the last sequence ID
             self.assertEqual(
-                self.csc.controller_cell.client_command.last_sequence_id, 3
+                self.csc.controller_cell.client_command.last_sequence_id, 19
             )
 
             # Enter the Standby state to close the connection
@@ -403,10 +414,10 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 self.csc.controller_cell.mock_server.are_servers_connected()
             )
 
-            # Check the last sequence ID. Note the value should be 9 instead of
-            # 3 from the previous connection.
+            # Check the last sequence ID. Note the value should be 45 instead
+            # of 19 from the previous connection.
             self.assertEqual(
-                self.csc.controller_cell.client_command.last_sequence_id, 9
+                self.csc.controller_cell.client_command.last_sequence_id, 45
             )
 
     async def test_telemetry_loop(self) -> None:
@@ -449,6 +460,31 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
+            axial = np.round(
+                np.random.normal(
+                    size=len(self.remote.cmd_applyForces.DataType().axial)
+                ),
+                decimals=5,
+            )
+            tangent = np.round(
+                np.random.normal(
+                    size=len(self.remote.cmd_applyForces.DataType().tangent)
+                ),
+                decimals=5,
+            )
+
+            with self.assertRaises(salobj.AckError):
+                await self.remote.cmd_applyForces.set_start(
+                    axial=axial, tangent=tangent, timeout=STD_TIMEOUT
+                )
+
+    async def test_applyForces_wrong_control_mode(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+            await self.remote.cmd_switchForceBalanceSystem.set_start(status=False)
+
             axial = np.round(
                 np.random.normal(
                     size=len(self.remote.cmd_applyForces.DataType().axial)
@@ -751,10 +787,20 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.remote.evt_inclinationTelemetrySource.flush()
 
             # Change the source of inclination
+
+            # This should fail in the ENABLED state
+            with self.assertRaises(salobj.AckError):
+                await self.remote.cmd_selectInclinationSource.set_start(
+                    source=InclinationTelemetrySource.MTMOUNT
+                )
+
+            # This can only be done in the DISABLED state
+            await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
             await self.remote.cmd_selectInclinationSource.set_start(
                 source=InclinationTelemetrySource.MTMOUNT
             )
 
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
             incl_source = await self.remote.evt_inclinationTelemetrySource.next(
                 flush=False, timeout=STD_TIMEOUT
             )
@@ -836,16 +882,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             mock_model.fault(MockErrorCode.LimitSwitchTriggeredClosedloop.value)
             await asyncio.sleep(1)
 
-            self.assertEqual(
-                self.csc.controller_cell.controller_state, salobj.State.FAULT
-            )
-
-            data_controller_state = await self.remote.evt_controllerState.aget(
-                timeout=STD_TIMEOUT
-            )
-            self.assertEqual(
-                data_controller_state.controllerState, int(salobj.State.FAULT)
-            )
+            self.assertTrue(self.csc.controller_cell.error_handler.exists_error())
 
             # Clear the error
             await self.remote.cmd_clearErrors.set_start(timeout=STD_TIMEOUT)
@@ -853,15 +890,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertFalse(mock_model.error_handler.exists_error())
             await asyncio.sleep(1)
 
-            self.assertEqual(
-                self.csc.controller_cell.controller_state, salobj.State.OFFLINE
-            )
-
     async def test_setTemperatureOffset(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
-            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+            await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
 
             # Change the offset successfully
             ring = [19.0] * NUM_TEMPERATURE_RING
