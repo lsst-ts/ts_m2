@@ -526,14 +526,14 @@ class M2(salobj.ConfigurableCsc):
         TODO: Remove this after the ILC is fixed.
         """
 
-        codes = {1000, 1001, 6052}
+        ilc_codes_to_bypass = {1000, 1001, 6052}
         (
             enabled_faults_mask,
             bits,
         ) = self.controller_cell.error_handler.calc_enabled_faults_mask(
-            codes, DEFAULT_ENABLED_FAULTS_MASK
+            ilc_codes_to_bypass, DEFAULT_ENABLED_FAULTS_MASK
         )
-        self.log.info(f"Bypass the error codes: {codes}. Bits: {bits}.")
+        self.log.info(f"Bypass the error codes: {ilc_codes_to_bypass}. Bits: {bits}.")
 
         await self._execute_command(
             self.controller_cell.set_enabled_faults_mask,
