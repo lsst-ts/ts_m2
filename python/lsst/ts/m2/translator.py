@@ -48,6 +48,8 @@ class Translator:
             message_reformat = self._handle_tangent_force(message_reformat)
         elif message_name == "summaryState":
             message_reformat = self._handle_summary_state(message_reformat)
+        elif message_name == "commandableByDDS":
+            message_reformat = self._handle_commandable_by_dds(message_reformat)
 
         return message_reformat
 
@@ -68,7 +70,7 @@ class Translator:
             Reformated message.
         """
 
-        message["lutTemperature"] = [0] * 6
+        message["lutTemperature"] = [0.0] * 6
 
         return message
 
@@ -85,8 +87,30 @@ class Translator:
 
         Returns
         -------
-        message : `dict`
+        `dict`
             Reformated message.
         """
 
         return dict(id="controllerState", controllerState=message["summaryState"])
+
+    def _handle_commandable_by_dds(self, message: dict) -> dict:
+        """Handle the message of commandable by data distribution system (DDS).
+
+        TODO: Remove this function after the DM-37422 is fixed. At this moment,
+        we need to connect the CSC to the ports of GUI to establish the
+        TCP/IP connection.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+
+        Returns
+        -------
+        message : `dict`
+            Reformated message.
+        """
+
+        message["state"] = True
+
+        return message

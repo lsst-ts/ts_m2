@@ -2,6 +2,14 @@
 Version History
 ===============
 
+v0.9.0
+-------
+
+* Remove the ``M2.set_mount_elevation_in_position_callback()``.
+* Ignore the events and telemetry that are not in **ts_xml** temporarily.
+* Communicate with the cRIO directly.
+* Add the enum field: ``ErrorCode.InterlockEngaged``.
+
 v0.8.2
 -------
 
