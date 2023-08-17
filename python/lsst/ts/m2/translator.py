@@ -43,13 +43,19 @@ class Translator:
 
         message_reformat = message.copy()
 
-        message_name = message_reformat["id"]
-        if message_name == "tangentForce":
-            message_reformat = self._handle_tangent_force(message_reformat)
-        elif message_name == "summaryState":
-            message_reformat = self._handle_summary_state(message_reformat)
-        elif message_name == "commandableByDDS":
-            message_reformat = self._handle_commandable_by_dds(message_reformat)
+        match message_reformat["id"]:
+            case "tangentForce":
+                message_reformat = self._handle_tangent_force(message_reformat)
+            case "summaryState":
+                message_reformat = self._handle_summary_state(message_reformat)
+            case "commandableByDDS":
+                message_reformat = self._handle_commandable_by_dds(message_reformat)
+            case "config":
+                message_reformat = self._handle_config(message_reformat)
+            case "configurationFiles":
+                message_reformat = self._handle_configuration_files(message_reformat)
+            case _:
+                return message_reformat
 
         return message_reformat
 
@@ -112,5 +118,54 @@ class Translator:
         """
 
         message["state"] = True
+
+        return message
+
+    def _handle_config(self, message: dict) -> dict:
+        """Handle the message of configuration.
+
+        Notes
+        -----
+        Remove some fields that should be deleted after we rewrite the
+        configuration files in ts_mtm2_cell in a latter time, or avoid these
+        in the ts_m2cellcpp directly.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+
+        Returns
+        -------
+        message : `dict`
+            Reformated message.
+        """
+
+        for field in (
+            "timeoutSal",
+            "timeoutCrio",
+            "timeoutIlc",
+            "inclinometerDelta",
+            "inclinometerDiffEnabled",
+        ):
+            message.pop(field)
+
+        return message
+
+    def _handle_configuration_files(self, message: dict) -> dict:
+        """Handle the message of configuration files.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+
+        Returns
+        -------
+        message : `dict`
+            Reformated message.
+        """
+
+        message["files"] = ",".join(message["files"])
 
         return message
