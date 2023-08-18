@@ -47,7 +47,7 @@ requirements:
     - setuptools
     - setuptools_scm
     - ts-salobj
-    - ts-idl
+    - ts-idl {{ idl_version }}
     - ts-simactuators
     - pandas
     - ts-tcpip
