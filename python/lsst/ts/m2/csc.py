@@ -33,10 +33,12 @@ from lsst.ts.m2com import (
     DEFAULT_ENABLED_FAULTS_MASK,
     LIMIT_FORCE_AXIAL_CLOSED_LOOP,
     LIMIT_FORCE_TANGENT_CLOSED_LOOP,
-    ClosedLoopControlMode,
+    NUM_ACTUATOR,
+    NUM_TANGENT_LINK,
+    ActuatorDisplacementUnit,
+    CommandActuator,
     ControllerCell,
     DigitalOutputStatus,
-    PowerType,
 )
 from lsst.ts.m2com import __version__ as __m2com_version__
 
@@ -156,6 +158,9 @@ class M2(salobj.ConfigurableCsc):
 
         self.system_is_ready = False
 
+        # Bypassed error codes
+        self._error_codes_bypass: set[int] = set()
+
         # Software version of the M2 common module
         self.evt_softwareVersions.set(subsystemVersions=f"ts-m2com={__m2com_version__}")
 
@@ -236,24 +241,12 @@ class M2(salobj.ConfigurableCsc):
 
         # Publish the SAL event
         if isinstance(message, dict):
-            # Bypass the following events before we support them in ts_xml
-            if message["id"] in (
-                "scriptExecutionStatus",
-                "digitalOutput",
-                "digitalInput",
-                "config",
-                "openLoopMaxLimit",
-                "limitSwitchStatus",
-                "powerSystemState",
-                "closedLoopControlMode",
-                "innerLoopControlMode",
-                "summaryFaultsStatus",
-                "enabledFaultsMask",
-                "configurationFiles",
-            ):
-                return
-
-            await self._publish_message_by_sal("evt_", message)
+            if message["id"] == "limitSwitchStatus":
+                await self._publish_limit_switch_status(
+                    message["retract"], message["extend"]
+                )
+            else:
+                await self._publish_message_by_sal("evt_", message)
 
             # Check the interlock status
             if (message["id"] == "interlock") and (message["state"] is True):
@@ -272,6 +265,29 @@ class M2(salobj.ConfigurableCsc):
                     code=ErrorCode.InterlockEngaged,
                     report="Interlock is engaged.",
                 )
+
+    async def _publish_limit_switch_status(
+        self, limit_switch_retract: list[int], limit_switch_extend: list[int]
+    ) -> None:
+        """Publish the limit switch status.
+
+        Parameters
+        ----------
+        limit_switch_retract : `list`
+            Triggered retract limit switch.
+        limit_switch_extend : `list`
+            Triggered extend limit switch.
+        """
+
+        for limit_switch in limit_switch_retract:
+            await self._publish_message_by_sal(
+                "evt_", dict(id="limitSwitchRetract", actuatorId=limit_switch)
+            )
+
+        for limit_switch in limit_switch_extend:
+            await self._publish_message_by_sal(
+                "evt_", dict(id="limitSwitchExtend", actuatorId=limit_switch)
+            )
 
     async def _publish_message_by_sal(
         self, prefix_sal_topic: str, message: dict
@@ -316,14 +332,6 @@ class M2(salobj.ConfigurableCsc):
 
         # Publish the SAL telemetry
         if isinstance(message, dict):
-            # Bypass the following telemetry before we support them in ts_xml
-            if message["id"] in (
-                "inclinometerAngleTma",
-                "powerStatusRaw",
-                "forceErrorTangent",
-            ):
-                return
-
             await self._publish_message_by_sal("tel_", message)
 
     async def _process_lost_connection(self) -> None:
@@ -405,13 +413,13 @@ class M2(salobj.ConfigurableCsc):
             try:
                 await self._execute_command(
                     self.controller_cell.power,
-                    PowerType.Communication,
+                    MTM2.PowerType.Communication,
                     False,
                     timeout=self.COMMAND_TIMEOUT_LONG,
                 )
                 await self._execute_command(
                     self.controller_cell.set_closed_loop_control_mode,
-                    ClosedLoopControlMode.Idle,
+                    MTM2.ClosedLoopControlMode.Idle,
                     timeout=self.COMMAND_TIMEOUT_LONG,
                 )
 
@@ -425,12 +433,15 @@ class M2(salobj.ConfigurableCsc):
 
         await self.controller_cell.stop_loops()
 
+        # Clear the internal data
+        self._error_codes_bypass.clear()
+
         await super().do_standby(data)
 
     async def do_enable(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT_LONG)
 
-        await self._bypass_monitor_ilc_read_error()
+        await self._bypass_error_codes()
 
         # Reset motor and communication power breakers bits and cRIO interlock
         # bit. Based on the original developer in ts_mtm2, this is required to
@@ -450,7 +461,7 @@ class M2(salobj.ConfigurableCsc):
         # cRIO simulator to work.
         await self._execute_command(
             self.controller_cell.set_closed_loop_control_mode,
-            ClosedLoopControlMode.Idle,
+            MTM2.ClosedLoopControlMode.Idle,
         )
 
         await self._execute_command(
@@ -462,7 +473,7 @@ class M2(salobj.ConfigurableCsc):
 
         await self._execute_command(
             self.controller_cell.set_closed_loop_control_mode,
-            ClosedLoopControlMode.Idle,
+            MTM2.ClosedLoopControlMode.Idle,
         )
         await self._execute_command(
             self.controller_cell.reset_force_offsets,
@@ -474,13 +485,13 @@ class M2(salobj.ConfigurableCsc):
         # Power on the system and enable the ILCs
         await self._execute_command(
             self.controller_cell.power,
-            PowerType.Communication,
+            MTM2.PowerType.Communication,
             True,
             timeout=self.COMMAND_TIMEOUT_LONG,
         )
         await self._execute_command(
             self.controller_cell.power,
-            PowerType.Motor,
+            MTM2.PowerType.Motor,
             True,
             timeout=self.COMMAND_TIMEOUT_LONG,
         )
@@ -501,7 +512,7 @@ class M2(salobj.ConfigurableCsc):
 
         await self._execute_command(
             self.controller_cell.set_closed_loop_control_mode,
-            ClosedLoopControlMode.OpenLoop,
+            MTM2.ClosedLoopControlMode.OpenLoop,
             timeout=self.COMMAND_TIMEOUT_LONG,
         )
 
@@ -519,21 +530,24 @@ class M2(salobj.ConfigurableCsc):
 
         await super().do_enable(data)
 
-    async def _bypass_monitor_ilc_read_error(self) -> None:
+    async def _bypass_error_codes(self) -> None:
         """Bypass the error codes related to the monitoring inner-loop
-        controller (ILC) read error before the fix.
+        controller (ILC) read error before the fix and other error codes.
 
-        TODO: Remove this after the ILC is fixed.
+        TODO: Remove the ILC read error after the ILC is fixed.
         """
 
+        # Note the union() will return a new set object
         ilc_codes_to_bypass = {1000, 1001, 6052}
+        codes_to_bypass = self._error_codes_bypass.union(ilc_codes_to_bypass)
+
         (
             enabled_faults_mask,
             bits,
         ) = self.controller_cell.error_handler.calc_enabled_faults_mask(
-            ilc_codes_to_bypass, DEFAULT_ENABLED_FAULTS_MASK
+            codes_to_bypass, DEFAULT_ENABLED_FAULTS_MASK
         )
-        self.log.info(f"Bypass the error codes: {ilc_codes_to_bypass}. Bits: {bits}.")
+        self.log.info(f"Bypass the error codes: {codes_to_bypass}. Bits: {bits}.")
 
         await self._execute_command(
             self.controller_cell.set_enabled_faults_mask,
@@ -553,13 +567,13 @@ class M2(salobj.ConfigurableCsc):
 
             await self._execute_command(
                 self.controller_cell.set_closed_loop_control_mode,
-                ClosedLoopControlMode.TelemetryOnly,
+                MTM2.ClosedLoopControlMode.TelemetryOnly,
                 timeout=self.COMMAND_TIMEOUT_LONG,
             )
 
             await self._execute_command(
                 self.controller_cell.power,
-                PowerType.Motor,
+                MTM2.PowerType.Motor,
                 False,
                 timeout=self.COMMAND_TIMEOUT_LONG,
             )
@@ -569,28 +583,23 @@ class M2(salobj.ConfigurableCsc):
                 "Error when doing the basic cleanup and power off the motor."
             )
 
-    async def _switch_force_balance_system(
-        self, status: bool, timeout: float | None = None
-    ) -> None:
+    async def _switch_force_balance_system(self, status: bool) -> None:
         """Switch the force balance system.
 
         Parameters
         ----------
         status : `bool`
             True if turn on the force balance system. Otherwise, False.
-        timeout : `float` or None, optional
-            Timeout of command in second. If None, the default value is used.
-            (the default is None)
         """
 
         # Do not allow the open-loop max limit in the closed-loop control
         if status is True:
             await self._execute_command(
-                self.controller_cell.enable_open_loop_max_limit, False, timeout=timeout
+                self.controller_cell.enable_open_loop_max_limit, False
             )
 
         await self._execute_command(
-            self.controller_cell.switch_force_balance_system, status, timeout=timeout
+            self.controller_cell.switch_force_balance_system, status
         )
 
     async def begin_disable(self, data: salobj.BaseMsgType) -> None:
@@ -646,7 +655,7 @@ class M2(salobj.ConfigurableCsc):
 
         self.assert_enabled()
 
-        closed_loop = ClosedLoopControlMode.ClosedLoop
+        closed_loop = MTM2.ClosedLoopControlMode.ClosedLoop
         if self.controller_cell.closed_loop_control_mode != closed_loop:
             raise RuntimeError(f"System needs to be under {closed_loop!r}.")
 
@@ -742,6 +751,45 @@ class M2(salobj.ConfigurableCsc):
             self.controller_cell.reset_force_offsets,
         )
 
+    async def do_resetActuatorSteps(self, data: salobj.BaseMsgType) -> None:
+        """Resets user defined actuator steps to zeros.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        self._assert_enabled_and_open_loop_control()
+
+        await self.cmd_resetActuatorSteps.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
+        await self._execute_command(
+            self.controller_cell.command_actuator,
+            CommandActuator.Stop,
+        )
+        await self._execute_command(
+            self.controller_cell.reset_actuator_steps,
+        )
+
+    def _assert_enabled_and_open_loop_control(self) -> None:
+        """Assert the system is in the Enabled state and under the open-loop
+        control or not.
+
+        Raises
+        -------
+        `RuntimeError`
+            If the system is not under the open-loop control.
+        """
+
+        self.assert_enabled()
+
+        open_loop = MTM2.ClosedLoopControlMode.OpenLoop
+        if self.controller_cell.closed_loop_control_mode != open_loop:
+            raise RuntimeError(f"System needs to be under {open_loop!r}.")
+
     async def do_clearErrors(self, data: salobj.BaseMsgType) -> None:
         """Emulate clearError command.
 
@@ -778,9 +826,16 @@ class M2(salobj.ConfigurableCsc):
         source = MTM2.InclinationTelemetrySource(data.source)
         use_mtmount = source == MTM2.InclinationTelemetrySource.MTMOUNT
 
+        max_angle_difference = (
+            None if (data.maxDifference == 0.0) else data.maxDifference
+        )
+
+        enable_angle_comparison = True if use_mtmount else data.enableComparison
+
         self.controller_cell.select_inclination_source(
             use_external_elevation_angle=use_mtmount,
-            enable_angle_comparison=use_mtmount,
+            max_angle_difference=max_angle_difference,
+            enable_angle_comparison=enable_angle_comparison,
         )
 
         await self._execute_command(self.controller_cell.set_control_parameters)
@@ -837,6 +892,262 @@ class M2(salobj.ConfigurableCsc):
         )
 
         await self._switch_force_balance_system(data.status)
+
+    async def do_bypassErrorCode(self, data: salobj.BaseMsgType) -> None:
+        """Bypass the error code in control loop.
+
+        Notes
+        -----
+        This command might break the system.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+
+        Raises
+        ------
+        `ValueError`
+            When the error code is unrecognized.
+        """
+
+        self._assert_disabled()
+
+        await self.cmd_bypassErrorCode.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
+        error_code = int(data.code)
+        available_error_codes = self.controller_cell.error_handler.list_code_total
+        if error_code not in available_error_codes:
+            raise ValueError(
+                f"Unrecognized error code: {error_code}. Available codes are: {available_error_codes}."
+            )
+
+        self._error_codes_bypass.add(error_code)
+
+    async def do_resetEnabledFaultsMask(self, data: salobj.BaseMsgType) -> None:
+        """Reset the enabled faults mask to default. This will remove all the
+        bypassed error codes in control loop.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        self._assert_disabled()
+
+        await self.cmd_resetEnabledFaultsMask.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
+        self._error_codes_bypass.clear()
+
+    async def do_setConfigurationFile(self, data: salobj.BaseMsgType) -> None:
+        """Set the system configuration file.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+
+        Raises
+        ------
+        `RuntimeError`
+            When no available configuration files.
+        `ValueError`
+            When the configuration file is not allowed.
+        """
+
+        self._assert_disabled()
+
+        await self.cmd_setConfigurationFile.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
+        # Get the current available files in controller
+        configuration_files = list()
+        error_no_file = "No available configuration files."
+        if self.evt_configurationFiles.has_data:
+            configuration_files = self.evt_configurationFiles.data.files.split(",")
+        else:
+            raise RuntimeError(error_no_file)
+
+        if len(configuration_files) <= 1:
+            raise RuntimeError(error_no_file)
+
+        # Check the file is available or not
+        configuration_file = data.file
+        if configuration_file not in configuration_files:
+            raise ValueError(
+                f"Only the following files are allowed: {configuration_files}."
+            )
+
+        await self._execute_command(
+            self.controller_cell.set_configuration_file,
+            configuration_file,
+        )
+
+    async def do_enableOpenLoopMaxLimit(self, data: salobj.BaseMsgType) -> None:
+        """Enable the maximum force limit in open-loop control.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        self._assert_enabled_and_open_loop_control()
+
+        await self.cmd_enableOpenLoopMaxLimit.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
+        await self._execute_command(
+            self.controller_cell.enable_open_loop_max_limit, data.status
+        )
+
+    async def do_moveActuator(self, data: salobj.BaseMsgType) -> None:
+        """Move the actuator in open-loop control.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+
+        Raises
+        ------
+        `ValueError`
+            When both of the displacement and step are not zero.
+        """
+
+        self._assert_enabled_and_open_loop_control()
+
+        await self.cmd_moveActuator.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
+
+        # micron to mm
+        displacement = data.displacement * 1e-3
+        step = int(data.step)
+        if (displacement != 0.0) and (step != 0):
+            raise ValueError(
+                "You can only move the displacement or step in a single time."
+            )
+
+        actuators = [int(data.actuator)]
+        if displacement != 0.0:
+            await self._execute_command(
+                self.controller_cell.command_actuator,
+                CommandActuator.Start,
+                actuators=actuators,  # type: ignore[arg-type]
+                target_displacement=displacement,
+                unit=ActuatorDisplacementUnit.Millimeter,
+            )
+        elif step != 0:
+            await self._execute_command(
+                self.controller_cell.command_actuator,
+                CommandActuator.Start,
+                actuators=actuators,  # type: ignore[arg-type]
+                target_displacement=step,  # type: ignore[arg-type]
+                unit=ActuatorDisplacementUnit.Step,
+            )
+
+    async def do_actuatorBumpTest(self, data: salobj.BaseMsgType) -> None:
+        """Exercise the actuator bump test in the closed-loop control, which is
+        performed at +/push and -/pull directions.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        self._assert_enabled_and_closed_loop_control()
+
+        # There will be two bumps and each bump will wait for (2 * period)
+        # seconds.
+        period = data.period
+        timeout = self.COMMAND_TIMEOUT + 4 * period
+        await self.cmd_actuatorBumpTest.ack_in_progress(data, timeout=timeout)
+
+        # Check this actuator is axial or tangent, and modify the actuator
+        # index if needed
+        actuator = int(data.actuator)
+        num_axial_actuator = NUM_ACTUATOR - NUM_TANGENT_LINK
+
+        is_axial = actuator < num_axial_actuator
+        if not is_axial:
+            actuator -= num_axial_actuator
+
+        # Move the +/push direction
+        force = data.force
+        await self._bump_actuator(is_axial, actuator, force, period)
+
+        # Move the -/pull direction
+        await self._bump_actuator(is_axial, actuator, -force, period)
+
+    async def _bump_actuator(
+        self, is_axial: bool, actuator: int, force: float, period: float
+    ) -> None:
+        """Bump the actuator.
+
+        Parameters
+        ----------
+        is_axial : `bool`
+            Is the axial actuator or not.
+        actuator : `int`
+            0-based actuator ID for axial (0-71) or tangent (0-5).
+        force : `float`
+            Force to apply in Newton.
+        period : `float`
+            Time period in seconds to hold when the actuator reaches the
+            applied force.
+
+        Raises
+        ------
+        `RuntimeError`
+            When the controller's applied force does not match the request.
+        """
+
+        # Check the forces are in range or not
+        num_axial_actuators = NUM_ACTUATOR - NUM_TANGENT_LINK
+
+        force_axial = [0.0] * num_axial_actuators
+        force_tangent = [0.0] * NUM_TANGENT_LINK
+        if is_axial:
+            force_axial[actuator] = force
+        else:
+            force_tangent[actuator] = force
+
+        self._check_applied_forces_in_range(force_axial, force_tangent)
+
+        # Apply the force and wait for some time
+        await self._execute_command(
+            self.controller_cell.apply_forces,
+            force_axial,
+            force_tangent,
+        )
+        await asyncio.sleep(period)
+
+        # Check the applied force with the first digit accuracy
+        data_force_applied = (
+            self.tel_axialForce.data.applied
+            if is_axial
+            else self.tel_tangentForce.data.applied
+        )
+        is_matched = round(data_force_applied[actuator], 1) == round(force, 1)
+
+        # Reset the force and wait for some time if success, otherwise, abort.
+        await self._execute_command(
+            self.controller_cell.reset_force_offsets,
+        )
+
+        if not is_matched:
+            raise RuntimeError(
+                "Controller's applied force does not match the request. Abort..."
+            )
+
+        await asyncio.sleep(period)
 
     async def _execute_command(
         self,
