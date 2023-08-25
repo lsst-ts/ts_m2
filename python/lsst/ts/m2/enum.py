@@ -27,3 +27,4 @@ __all__ = ["ErrorCode"]
 class ErrorCode(IntEnum):
     ControllerInFault = 1
     NoConnection = auto()
+    InterlockEngaged = auto()

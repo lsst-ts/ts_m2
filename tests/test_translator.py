@@ -28,6 +28,13 @@ class TestTranslator(unittest.TestCase):
     def setUp(self) -> None:
         self.translator = Translator()
 
+    def test_handle_default(self) -> None:
+        message = dict(id="default", value=1)
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload, message)
+
     def test_handle_tangent_force(self) -> None:
         message = dict(id="tangentForce", lutTemperature=[])
 
@@ -42,6 +49,49 @@ class TestTranslator(unittest.TestCase):
 
         self.assertEqual(message_payload["id"], "controllerState")
         self.assertEqual(message_payload["controllerState"], 3)
+
+    def test_handle_commandable_by_dds(self) -> None:
+        message = dict(id="commandableByDDS", state=False)
+
+        message_payload = self.translator.translate(message)
+
+        self.assertTrue(message_payload["state"])
+
+    def test_handle_config(self) -> None:
+        message = dict(
+            id="config",
+            timeoutSal=1.0,
+            timeoutCrio=1.0,
+            timeoutIlc=1.0,
+            inclinometerDelta=1.0,
+            inclinometerDiffEnabled=False,
+        )
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(len(message_payload.keys()), 1)
+
+    def test_handle_configuration_files(self) -> None:
+        # Multiple files
+        message = dict(id="configurationFiles", files=["a", "b"])
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload["files"], "a,b")
+
+        # Single file
+        message = dict(id="configurationFiles", files=["a"])
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload["files"], "a")
+
+        # No file
+        message = dict(id="configurationFiles", files=[])
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload["files"], "")
 
 
 if __name__ == "__main__":
