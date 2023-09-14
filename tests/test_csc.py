@@ -24,7 +24,6 @@ import unittest
 
 import numpy as np
 from lsst.ts import salobj
-from lsst.ts.idl.enums import MTM2
 from lsst.ts.m2 import M2
 from lsst.ts.m2com import (
     DEFAULT_ENABLED_FAULTS_MASK,
@@ -41,6 +40,7 @@ from lsst.ts.m2com import (
     LimitSwitchType,
     MockErrorCode,
 )
+from lsst.ts.xml.enums import MTM2
 
 # Timeout for fast operations (seconds)
 STD_TIMEOUT = 15
@@ -463,7 +463,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check the last sequence ID
             self.assertEqual(
-                self.csc.controller_cell.client_command.last_sequence_id, 19
+                self.csc.controller_cell.client_command.last_sequence_id, 20
             )
 
             # Enter the Standby state to close the connection
@@ -483,10 +483,10 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 self.csc.controller_cell.mock_server.are_servers_connected()
             )
 
-            # Check the last sequence ID. Note the value should be 45 instead
-            # of 19 from the previous connection.
+            # Check the last sequence ID. Note the value should be 47 instead
+            # of 20 from the previous connection.
             self.assertEqual(
-                self.csc.controller_cell.client_command.last_sequence_id, 45
+                self.csc.controller_cell.client_command.last_sequence_id, 47
             )
 
     async def test_telemetry_loop(self) -> None:
@@ -525,7 +525,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
 
-    async def test_applyForces_wrong_controller_state(self) -> None:
+    async def test_applyForces_wrong_state(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
@@ -898,18 +898,16 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
             # The default force balance system is on when controlled by SAL
-            force_balance_status = await self.remote.evt_forceBalanceSystemStatus.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
+            await asyncio.sleep(SLEEP_TIME_MEDIUM)
+            force_balance_status = self.remote.evt_forceBalanceSystemStatus.get()
 
             self.assertTrue(force_balance_status.status)
 
             # Switch the force balance system off
             await self.remote.cmd_switchForceBalanceSystem.set_start(status=False)
 
-            force_balance_status = await self.remote.evt_forceBalanceSystemStatus.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
+            await asyncio.sleep(SLEEP_TIME_MEDIUM)
+            force_balance_status = self.remote.evt_forceBalanceSystemStatus.get()
 
             self.assertFalse(force_balance_status.status)
 

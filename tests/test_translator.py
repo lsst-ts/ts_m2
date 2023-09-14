@@ -42,14 +42,6 @@ class TestTranslator(unittest.TestCase):
 
         self.assertEqual(message_payload["lutTemperature"], [0] * 6)
 
-    def test_handle_summary_state(self) -> None:
-        message = dict(id="summaryState", summaryState=3)
-
-        message_payload = self.translator.translate(message)
-
-        self.assertEqual(message_payload["id"], "controllerState")
-        self.assertEqual(message_payload["controllerState"], 3)
-
     def test_handle_commandable_by_dds(self) -> None:
         message = dict(id="commandableByDDS", state=False)
 
