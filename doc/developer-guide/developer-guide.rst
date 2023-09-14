@@ -14,6 +14,7 @@ Dependencies
 * `ts_salobj <https://github.com/lsst-ts/ts_salobj>`_
 * `ts_config_mttcs <https://github.com/lsst-ts/ts_config_mttcs>`_
 * `ts_tcpip <https://github.com/lsst-ts/ts_tcpip>`_
+* `ts_xml <https://github.com/lsst-ts/ts_xml>`_
 * `ts_utils <https://github.com/lsst-ts/ts_utils>`_
 * `ts_m2com <https://github.com/lsst-ts/ts_m2com>`_
 
