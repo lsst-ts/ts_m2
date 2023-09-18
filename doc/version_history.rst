@@ -2,6 +2,13 @@
 Version History
 ===============
 
+v0.9.1
+------
+
+* Remove the legacy code.
+* Use the enums in **ts_xml** instead of **ts_idl**.
+* Acknowledge 400 sec in ``M2.do_enable()``.
+
 v0.9.0
 -------
 
