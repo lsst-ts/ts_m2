@@ -28,7 +28,6 @@ import typing
 
 import numpy as np
 from lsst.ts import salobj
-from lsst.ts.idl.enums import MTM2
 from lsst.ts.m2com import (
     DEFAULT_ENABLED_FAULTS_MASK,
     LIMIT_FORCE_AXIAL_CLOSED_LOOP,
@@ -41,6 +40,7 @@ from lsst.ts.m2com import (
     DigitalOutputStatus,
 )
 from lsst.ts.m2com import __version__ as __m2com_version__
+from lsst.ts.xml.enums import MTM2
 
 from . import __version__
 from .config_schema import CONFIG_SCHEMA
@@ -104,9 +104,11 @@ class M2(salobj.ConfigurableCsc):
     # Command timeout in second
     COMMAND_TIMEOUT = 10
     COMMAND_TIMEOUT_LONG = 60
+    COMMAND_TIMEOUT_LONG_ENABLE = 400
 
     # Short sleep time in second
     SLEEP_TIME_SHORT = 3.0
+    SLEEP_TIME_MEDIUM = 5.0
 
     def __init__(
         self,
@@ -439,7 +441,9 @@ class M2(salobj.ConfigurableCsc):
         await super().do_standby(data)
 
     async def do_enable(self, data: salobj.BaseMsgType) -> None:
-        await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT_LONG)
+        await self.cmd_enable.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT_LONG_ENABLE
+        )
 
         await self._bypass_error_codes()
 
@@ -517,12 +521,12 @@ class M2(salobj.ConfigurableCsc):
         )
 
         # Wait for some time before transitioning to the closed-loop control
-        await asyncio.sleep(self.SLEEP_TIME_SHORT)
+        await asyncio.sleep(self.SLEEP_TIME_MEDIUM)
 
         await self._switch_force_balance_system(True)
 
         # Wait for some time to stabilize the system
-        await asyncio.sleep(self.SLEEP_TIME_SHORT)
+        await asyncio.sleep(self.SLEEP_TIME_MEDIUM)
 
         # System is ready now. If there is any error, the system will
         # transition to the Fault state from now on.
@@ -804,9 +808,7 @@ class M2(salobj.ConfigurableCsc):
     async def _clear_controller_errors(self) -> None:
         """Clear the controller errors."""
 
-        await self._execute_command(
-            self.controller_cell.clear_errors, bypass_state_checking=True  # type: ignore[arg-type]
-        )
+        await self._execute_command(self.controller_cell.clear_errors)
 
     async def do_selectInclinationSource(self, data: salobj.BaseMsgType) -> None:
         """Command to select source of inclination data.

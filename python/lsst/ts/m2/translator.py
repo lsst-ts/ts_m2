@@ -46,8 +46,6 @@ class Translator:
         match message_reformat["id"]:
             case "tangentForce":
                 message_reformat = self._handle_tangent_force(message_reformat)
-            case "summaryState":
-                message_reformat = self._handle_summary_state(message_reformat)
             case "commandableByDDS":
                 message_reformat = self._handle_commandable_by_dds(message_reformat)
             case "config":
@@ -79,25 +77,6 @@ class Translator:
         message["lutTemperature"] = [0.0] * 6
 
         return message
-
-    def _handle_summary_state(self, message: dict) -> dict:
-        """Handle the message of summary state.
-
-        Note: Reformat the summary state in controller to be the controller's
-        state.
-
-        Parameters
-        ----------
-        message : `dict`
-            Message from the component.
-
-        Returns
-        -------
-        `dict`
-            Reformated message.
-        """
-
-        return dict(id="controllerState", controllerState=message["summaryState"])
 
     def _handle_commandable_by_dds(self, message: dict) -> dict:
         """Handle the message of commandable by data distribution system (DDS).
