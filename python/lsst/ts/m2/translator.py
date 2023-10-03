@@ -52,6 +52,12 @@ class Translator:
                 message_reformat = self._handle_config(message_reformat)
             case "configurationFiles":
                 message_reformat = self._handle_configuration_files(message_reformat)
+            case "digitalInput":
+                message_reformat = self._handle_digital_input(message_reformat)
+            case "summaryFaultsStatus":
+                message_reformat = self._handle_summary_faults_status(message_reformat)
+            case "enabledFaultsMask":
+                message_reformat = self._handle_enabled_faults_mask(message_reformat)
             case _:
                 return message_reformat
 
@@ -146,5 +152,59 @@ class Translator:
         """
 
         message["files"] = ",".join(message["files"])
+
+        return message
+
+    def _handle_digital_input(self, message: dict) -> dict:
+        """Handle the message of digital input.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+
+        Returns
+        -------
+        message : `dict`
+            Reformated message.
+        """
+
+        message["value"] = hex(message["value"])
+
+        return message
+
+    def _handle_summary_faults_status(self, message: dict) -> dict:
+        """Handle the message of summary faults status.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+
+        Returns
+        -------
+        message : `dict`
+            Reformated message.
+        """
+
+        message["status"] = hex(message["status"])
+
+        return message
+
+    def _handle_enabled_faults_mask(self, message: dict) -> dict:
+        """Handle the message of enabled faults mask.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+
+        Returns
+        -------
+        message : `dict`
+            Reformated message.
+        """
+
+        message["mask"] = hex(message["mask"])
 
         return message

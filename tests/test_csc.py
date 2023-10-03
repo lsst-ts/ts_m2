@@ -189,7 +189,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             data_digital_input = await self.remote.evt_digitalInput.next(
                 flush=False, timeout=STD_TIMEOUT
             )
-            self.assertEqual(data_digital_input.value, TEST_DIGITAL_INPUT_NO_POWER)
+            self.assertEqual(data_digital_input.value, hex(TEST_DIGITAL_INPUT_NO_POWER))
 
             data_config = await self.remote.evt_config.next(
                 flush=False, timeout=STD_TIMEOUT
@@ -208,7 +208,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             data_enabled_faults_mask = await self.remote.evt_enabledFaultsMask.next(
                 flush=False, timeout=STD_TIMEOUT
             )
-            self.assertEqual(data_enabled_faults_mask.mask, DEFAULT_ENABLED_FAULTS_MASK)
+            self.assertEqual(
+                data_enabled_faults_mask.mask, hex(DEFAULT_ENABLED_FAULTS_MASK)
+            )
 
             data_configuration_files = await self.remote.evt_configurationFiles.next(
                 flush=False, timeout=STD_TIMEOUT
@@ -272,7 +274,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check the events
             data_summary_faults_status = self.remote.evt_summaryFaultsStatus.get()
-            self.assertEqual(data_summary_faults_status.status, 2**6)
+            self.assertEqual(data_summary_faults_status.status, hex(2**6))
 
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
@@ -1017,7 +1019,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
     def _assert_enabled_faults_mask(self, expected_mask: int) -> None:
         data = self.remote.evt_enabledFaultsMask.get()
-        self.assertEqual(data.mask, expected_mask)
+        self.assertEqual(data.mask, hex(expected_mask))
 
     async def test_resetEnabledFaultsMask(self) -> None:
         async with self.make_csc(
