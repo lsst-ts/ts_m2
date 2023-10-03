@@ -2,8 +2,8 @@
 Version History
 ===============
 
-v0.9.2
-------
+v0.10.0
+-------
 
 * Update the **Translator** class to avoid the ``unsigned long`` and ``unsigned long long`` values by using the ``string`` instead.
 * Update the ``.ts_pre_commit_config.yaml``.
