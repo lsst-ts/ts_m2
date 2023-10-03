@@ -85,6 +85,27 @@ class TestTranslator(unittest.TestCase):
 
         self.assertEqual(message_payload["files"], "")
 
+    def test_handle_digital_input(self) -> None:
+        message = dict(id="digitalInput", value=16)
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload["value"], "0x10")
+
+    def test_handle_summary_faults_status(self) -> None:
+        message = dict(id="summaryFaultsStatus", status=16)
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload["status"], "0x10")
+
+    def test_handle_enabled_faults_mask(self) -> None:
+        message = dict(id="enabledFaultsMask", mask=16)
+
+        message_payload = self.translator.translate(message)
+
+        self.assertEqual(message_payload["mask"], "0x10")
+
 
 if __name__ == "__main__":
     # Do the unit test
