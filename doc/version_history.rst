@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.11.0
+-------
+
+* Support the interrupt of actuator bump test and publish the status of bump test.
+
 v0.10.0
 -------
 
