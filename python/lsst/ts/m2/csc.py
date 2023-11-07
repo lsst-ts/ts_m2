@@ -41,6 +41,7 @@ from lsst.ts.m2com import (
 )
 from lsst.ts.m2com import __version__ as __m2com_version__
 from lsst.ts.utils import make_done_future
+from lsst.ts.xml.component_info import ComponentInfo
 from lsst.ts.xml.enums import MTM2
 
 from . import __version__
@@ -122,6 +123,13 @@ class M2(salobj.ConfigurableCsc):
         simulation_mode: int = 0,
         verbose: bool = False,
     ) -> None:
+        # This is to keep the backward compatibility of ts_xml v20.0.0 that
+        # does not have the 'killActuatorBumpTest' command defined in xml.
+        # TODO: Remove this after ts_xml v20.1.0.
+        component_info = ComponentInfo("MTM2", "sal")
+        if "cmd_killActuatorBumpTest" in component_info.topics:
+            setattr(self, "do_killActuatorBumpTest", self._do_killActuatorBumpTest)
+
         super().__init__(
             "MTM2",
             index=0,
@@ -1224,7 +1232,7 @@ class M2(salobj.ConfigurableCsc):
                 actuator=actuator, status=status.value
             )
 
-    async def do_killActuatorBumpTest(self, data: salobj.BaseMsgType) -> None:
+    async def _do_killActuatorBumpTest(self, data: salobj.BaseMsgType) -> None:
         """Kill the running actuator bump test in the closed-loop control.
 
         Parameters
