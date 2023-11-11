@@ -648,7 +648,7 @@ class M2(salobj.ConfigurableCsc):
         `bool`
             True if the bump test is done. Otherwise, False.
         """
-        return self._task_bump_test.done() or self._task_bump_test.cancelled()
+        return self._task_bump_test.done()
 
     async def do_applyForces(self, data: salobj.BaseMsgType) -> None:
         """Apply force.
@@ -1138,6 +1138,8 @@ class M2(salobj.ConfigurableCsc):
             # Publish the event that the bump test fails
             await self._publish_status_bump_test(actuator, BumpTest.FAILED)
 
+            self.log.debug("Bump test task is failed or cancelled.")
+
     async def _bump_actuator(self, actuator: int, force: float, period: float) -> None:
         """Bump the actuator.
 
@@ -1241,11 +1243,19 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
+        self.assert_enabled()
+
+        if self._is_bump_test_done():
+            return
+
         await self.cmd_killActuatorBumpTest.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
+        self.log.info("Killing bump test.")
+
         self._task_bump_test.cancel()
+        await self._task_bump_test
 
     async def _execute_command(
         self,
