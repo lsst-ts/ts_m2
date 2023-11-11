@@ -21,10 +21,23 @@
 
 from enum import IntEnum, auto
 
-__all__ = ["ErrorCode"]
+__all__ = ["ErrorCode", "BumpTest"]
 
 
 class ErrorCode(IntEnum):
     ControllerInFault = 1
     NoConnection = auto()
     InterlockEngaged = auto()
+
+
+# This is to keep the backward compatibility of ts_xml v20.0.0 that
+# does not have the 'actuatorBumpTestStatus' event defined in xml.
+# TODO: Remove this after ts_xml v20.1.0.
+class BumpTest(IntEnum):
+    NOTTESTED = 1
+    TESTINGPOSITIVE = 2
+    TESTINGPOSITIVEWAIT = 3
+    TESTINGNEGATIVE = 4
+    TESTINGNEGATIVEWAIT = 5
+    PASSED = 6
+    FAILED = 7

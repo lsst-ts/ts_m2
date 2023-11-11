@@ -1184,15 +1184,98 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Axial actuator
             force = 5.26
-            period = 6.0
+            period = 3.0
             await self.remote.cmd_actuatorBumpTest.set_start(
                 actuator=1, force=force, period=period
             )
+
+            # Check the events
+
+            # This is to keep the backward compatibility of ts_xml v20.0.0 that
+            # does not have the 'actuatorBumpTestStatus' event defined in xml.
+            # TODO: Remove this after ts_xml v20.1.0.
+            if hasattr(self.remote, "evt_actuatorBumpTestStatus"):
+                data_status = await self.remote.evt_actuatorBumpTestStatus.next(
+                    flush=False, timeout=STD_TIMEOUT
+                )
+                self.assertEqual(data_status.actuator, 1)
+                self.assertEqual(data_status.status, MTM2.BumpTest.TESTINGPOSITIVE)
+
+            await asyncio.sleep(5 * period)
+
+            # This is to keep the backward compatibility of ts_xml v20.0.0 that
+            # does not have the 'actuatorBumpTestStatus' event defined in xml.
+            # TODO: Remove this after ts_xml v20.1.0.
+            if hasattr(self.remote, "evt_actuatorBumpTestStatus"):
+                data_status = self.remote.evt_actuatorBumpTestStatus.get()
+                self.assertEqual(data_status.actuator, 1)
+                self.assertEqual(data_status.status, MTM2.BumpTest.PASSED)
 
             # Tangent link
             await self.remote.cmd_actuatorBumpTest.set_start(
                 actuator=73, force=force, period=period
             )
+
+            await asyncio.sleep(5 * period)
+
+            # Check the event
+
+            # This is to keep the backward compatibility of ts_xml v20.0.0 that
+            # does not have the 'actuatorBumpTestStatus' event defined in xml.
+            # TODO: Remove this after ts_xml v20.1.0.
+            if hasattr(self.remote, "evt_actuatorBumpTestStatus"):
+                data_status = self.remote.evt_actuatorBumpTestStatus.get()
+                self.assertEqual(data_status.actuator, 73)
+                self.assertEqual(data_status.status, MTM2.BumpTest.PASSED)
+
+    async def test_actuatorBumpTest_running_error(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+
+            # Run the bump test
+            force = 5.26
+            period = 3.0
+            await self.remote.cmd_actuatorBumpTest.set_start(
+                actuator=1, force=force, period=period
+            )
+
+            await asyncio.sleep(1.0)
+
+            # This should fail because there is a running bump test now
+            with self.assertRaises(salobj.AckError):
+                await self.remote.cmd_actuatorBumpTest.set_start(
+                    actuator=2, force=force, period=period
+                )
+
+            # Kill the running bump test
+            self.csc._task_bump_test.cancel()
+
+    async def test_killActuatorBumpTest(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            # This is to keep the backward compatibility of ts_xml v20.0.0 that
+            # does not have the 'actuatorBumpTestStatus' event defined in xml.
+            # TODO: Remove this after ts_xml v20.1.0.
+            if hasattr(self.remote, "cmd_killActuatorBumpTest"):
+                await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+
+                await self.remote.cmd_actuatorBumpTest.set_start(
+                    actuator=1, force=5.26, period=6.0
+                )
+
+                await asyncio.sleep(1.0)
+                self.assertFalse(self.csc._is_bump_test_done())
+
+                await self.remote.cmd_killActuatorBumpTest.set_start()
+
+                await asyncio.sleep(1.0)
+                data_status = self.remote.evt_actuatorBumpTestStatus.get()
+                self.assertEqual(data_status.status, MTM2.BumpTest.FAILED)
+
+                self.assertTrue(self.csc._is_bump_test_done())
 
     async def test_check_limit_switch(self) -> None:
         async with self.make_csc(
