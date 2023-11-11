@@ -40,11 +40,13 @@ from lsst.ts.m2com import (
     DigitalOutputStatus,
 )
 from lsst.ts.m2com import __version__ as __m2com_version__
+from lsst.ts.utils import make_done_future
+from lsst.ts.xml.component_info import ComponentInfo
 from lsst.ts.xml.enums import MTM2
 
 from . import __version__
 from .config_schema import CONFIG_SCHEMA
-from .enum import ErrorCode
+from .enum import BumpTest, ErrorCode
 from .translator import Translator
 
 __all__ = ["M2", "run_mtm2"]
@@ -121,6 +123,13 @@ class M2(salobj.ConfigurableCsc):
         simulation_mode: int = 0,
         verbose: bool = False,
     ) -> None:
+        # This is to keep the backward compatibility of ts_xml v20.0.0 that
+        # does not have the 'killActuatorBumpTest' command defined in xml.
+        # TODO: Remove this after ts_xml v20.1.0.
+        component_info = ComponentInfo("MTM2", "sal")
+        if "cmd_killActuatorBumpTest" in component_info.topics:
+            setattr(self, "do_killActuatorBumpTest", self._do_killActuatorBumpTest)
+
         super().__init__(
             "MTM2",
             index=0,
@@ -165,6 +174,9 @@ class M2(salobj.ConfigurableCsc):
 
         # Software version of the M2 common module
         self.evt_softwareVersions.set(subsystemVersions=f"ts-m2com={__m2com_version__}")
+
+        # Task of the bump test
+        self._task_bump_test = make_done_future()
 
     async def set_mount_elevation_callback(self, data: salobj.BaseMsgType) -> None:
         """Callback function to set the mount elevation.
@@ -614,6 +626,10 @@ class M2(salobj.ConfigurableCsc):
         await super().begin_disable(data)
 
     async def do_disable(self, data: salobj.BaseMsgType) -> None:
+        # Cancel the bump test if exists
+        if not self._is_bump_test_done():
+            self._task_bump_test.cancel()
+
         # By doing this, we can avoid the new error code put the system into
         # the Fault state again, which is annoying.
         self.system_is_ready = False
@@ -624,6 +640,16 @@ class M2(salobj.ConfigurableCsc):
 
         await super().do_disable(data)
 
+    def _is_bump_test_done(self) -> bool:
+        """The bump test is done or not.
+
+        Returns
+        -------
+        `bool`
+            True if the bump test is done. Otherwise, False.
+        """
+        return self._task_bump_test.done()
+
     async def do_applyForces(self, data: salobj.BaseMsgType) -> None:
         """Apply force.
 
@@ -633,7 +659,7 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        self._assert_enabled_and_closed_loop_control()
+        self._assert_closed_loop_control_and_allow_motion()
 
         await self.cmd_applyForces.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
@@ -647,14 +673,16 @@ class M2(salobj.ConfigurableCsc):
             force_tangent,
         )
 
-    def _assert_enabled_and_closed_loop_control(self) -> None:
-        """Assert the system is in the Enabled state and under the closed-loop
-        control or not.
+    def _assert_closed_loop_control_and_allow_motion(self) -> None:
+        """Assert the system is under the closed-loop control and allow the
+        motion or not.
 
         Raises
         -------
         `RuntimeError`
             If the system is not under the closed-loop control.
+        `RuntimeError`
+            If the system is doing the bump test.
         """
 
         self.assert_enabled()
@@ -662,6 +690,9 @@ class M2(salobj.ConfigurableCsc):
         closed_loop = MTM2.ClosedLoopControlMode.ClosedLoop
         if self.controller_cell.closed_loop_control_mode != closed_loop:
             raise RuntimeError(f"System needs to be under {closed_loop!r}.")
+
+        if not self._is_bump_test_done():
+            raise RuntimeError("System is still doing the bump test.")
 
     def _check_applied_forces_in_range(
         self,
@@ -720,7 +751,7 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        self._assert_enabled_and_closed_loop_control()
+        self._assert_closed_loop_control_and_allow_motion()
 
         await self.cmd_positionMirror.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
@@ -745,7 +776,7 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        self._assert_enabled_and_closed_loop_control()
+        self._assert_closed_loop_control_and_allow_motion()
 
         await self.cmd_resetForceOffsets.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
@@ -1064,41 +1095,58 @@ class M2(salobj.ConfigurableCsc):
             Data of the SAL message.
         """
 
-        self._assert_enabled_and_closed_loop_control()
+        self._assert_closed_loop_control_and_allow_motion()
 
-        # There will be two bumps and each bump will wait for (2 * period)
-        # seconds.
-        period = data.period
-        timeout = self.COMMAND_TIMEOUT + 4 * period
-        await self.cmd_actuatorBumpTest.ack_in_progress(data, timeout=timeout)
+        await self.cmd_actuatorBumpTest.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
 
-        # Check this actuator is axial or tangent, and modify the actuator
-        # index if needed
-        actuator = int(data.actuator)
-        num_axial_actuator = NUM_ACTUATOR - NUM_TANGENT_LINK
+        self._task_bump_test = asyncio.create_task(
+            self._exercise_actuator_bump_test(
+                int(data.actuator), data.force, data.period
+            )
+        )
 
-        is_axial = actuator < num_axial_actuator
-        if not is_axial:
-            actuator -= num_axial_actuator
-
-        # Move the +/push direction
-        force = data.force
-        await self._bump_actuator(is_axial, actuator, force, period)
-
-        # Move the -/pull direction
-        await self._bump_actuator(is_axial, actuator, -force, period)
-
-    async def _bump_actuator(
-        self, is_axial: bool, actuator: int, force: float, period: float
+    async def _exercise_actuator_bump_test(
+        self, actuator: int, force: float, period: float
     ) -> None:
+        """Exercise the actuator bump test in the closed-loop control, which is
+        performed at +/push and -/pull directions.
+
+        Parameters
+        ----------
+        actuator : `int`
+            0-based actuator ID.
+        force : `float`
+            Force to apply in Newton.
+        period : `float`
+            Time period in seconds to hold when the actuator reaches the
+            applied force.
+        """
+
+        try:
+            # Move the +/push direction
+            await self._bump_actuator(actuator, force, period)
+
+            # Move the -/pull direction
+            await self._bump_actuator(actuator, -force, period)
+
+            # Publish the event that the bump test passes
+            await self._publish_status_bump_test(actuator, BumpTest.PASSED)
+
+        except (Exception, asyncio.CancelledError):
+            # Publish the event that the bump test fails
+            await self._publish_status_bump_test(actuator, BumpTest.FAILED)
+
+            self.log.debug("Bump test task is failed or cancelled.")
+
+    async def _bump_actuator(self, actuator: int, force: float, period: float) -> None:
         """Bump the actuator.
 
         Parameters
         ----------
-        is_axial : `bool`
-            Is the axial actuator or not.
         actuator : `int`
-            0-based actuator ID for axial (0-71) or tangent (0-5).
+            0-based actuator ID.
         force : `float`
             Force to apply in Newton.
         period : `float`
@@ -1111,24 +1159,39 @@ class M2(salobj.ConfigurableCsc):
             When the controller's applied force does not match the request.
         """
 
-        # Check the forces are in range or not
-        num_axial_actuators = NUM_ACTUATOR - NUM_TANGENT_LINK
+        # Check this actuator is axial or tangent, and modify the actuator
+        # index if needed
+        num_axial_actuator = NUM_ACTUATOR - NUM_TANGENT_LINK
+        is_axial = actuator < num_axial_actuator
+        actuator_bump = actuator if is_axial else (actuator - num_axial_actuator)
 
-        force_axial = [0.0] * num_axial_actuators
+        # Check the forces are in range or not
+        force_axial = [0.0] * num_axial_actuator
         force_tangent = [0.0] * NUM_TANGENT_LINK
         if is_axial:
-            force_axial[actuator] = force
+            force_axial[actuator_bump] = force
         else:
-            force_tangent[actuator] = force
+            force_tangent[actuator_bump] = force
 
         self._check_applied_forces_in_range(force_axial, force_tangent)
 
-        # Apply the force and wait for some time
+        # Apply the force and publish the related event
+        is_positive_force = force >= 0.0
+        if is_positive_force:
+            await self._publish_status_bump_test(actuator, BumpTest.TESTINGPOSITIVE)
+        else:
+            await self._publish_status_bump_test(actuator, BumpTest.TESTINGNEGATIVE)
         await self._execute_command(
             self.controller_cell.apply_forces,
             force_axial,
             force_tangent,
         )
+
+        # Wait for some time and publish the related event
+        if is_positive_force:
+            await self._publish_status_bump_test(actuator, BumpTest.TESTINGPOSITIVEWAIT)
+        else:
+            await self._publish_status_bump_test(actuator, BumpTest.TESTINGNEGATIVEWAIT)
         await asyncio.sleep(period)
 
         # Check the applied force with the first digit accuracy
@@ -1137,7 +1200,7 @@ class M2(salobj.ConfigurableCsc):
             if is_axial
             else self.tel_tangentForce.data.applied
         )
-        is_matched = round(data_force_applied[actuator], 1) == round(force, 1)
+        is_matched = round(data_force_applied[actuator_bump], 1) == round(force, 1)
 
         # Reset the force and wait for some time if success, otherwise, abort.
         await self._execute_command(
@@ -1150,6 +1213,49 @@ class M2(salobj.ConfigurableCsc):
             )
 
         await asyncio.sleep(period)
+
+    async def _publish_status_bump_test(self, actuator: int, status: BumpTest) -> None:
+        """Publish the status of actuator bump test.
+
+        Parameters
+        ----------
+        actuator : `int`
+            0-based actuator ID.
+        status : enum `MTM2.BumpTest`
+            Status of the actuator bump test. The current annotation of
+            enum "BumpTest" is to maintain the backward compatibility.
+        """
+
+        # This is to keep the backward compatibility of ts_xml v20.0.0 that
+        # does not have the 'actuatorBumpTestStatus' event defined in xml.
+        # TODO: Remove this after ts_xml v20.1.0.
+        if hasattr(self, "evt_actuatorBumpTestStatus"):
+            await self.evt_actuatorBumpTestStatus.set_write(
+                actuator=actuator, status=status.value
+            )
+
+    async def _do_killActuatorBumpTest(self, data: salobj.BaseMsgType) -> None:
+        """Kill the running actuator bump test in the closed-loop control.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        self.assert_enabled()
+
+        if self._is_bump_test_done():
+            return
+
+        await self.cmd_killActuatorBumpTest.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
+        self.log.info("Killing bump test.")
+
+        self._task_bump_test.cancel()
+        await self._task_bump_test
 
     async def _execute_command(
         self,
