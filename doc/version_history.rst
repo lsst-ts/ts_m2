@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.11.1
+-------
+
+* Add the interface to set the hardpoint list.
+
 v0.11.0
 -------
 

@@ -33,6 +33,7 @@ from lsst.ts.m2com import (
     LIMIT_FORCE_AXIAL_CLOSED_LOOP,
     LIMIT_FORCE_TANGENT_CLOSED_LOOP,
     NUM_ACTUATOR,
+    NUM_HARDPOINTS_AXIAL,
     NUM_TANGENT_LINK,
     ActuatorDisplacementUnit,
     CommandActuator,
@@ -40,6 +41,7 @@ from lsst.ts.m2com import (
     DigitalOutputStatus,
 )
 from lsst.ts.m2com import __version__ as __m2com_version__
+from lsst.ts.m2com import check_hardpoints, read_yaml_file
 from lsst.ts.utils import make_done_future
 from lsst.ts.xml.component_info import ComponentInfo
 from lsst.ts.xml.enums import MTM2
@@ -129,6 +131,9 @@ class M2(salobj.ConfigurableCsc):
         component_info = ComponentInfo("MTM2", "sal")
         if "cmd_killActuatorBumpTest" in component_info.topics:
             setattr(self, "do_killActuatorBumpTest", self._do_killActuatorBumpTest)
+
+        if "cmd_setHardpointList" in component_info.topics:
+            setattr(self, "do_setHardpointList", self._do_setHardpointList)
 
         super().__init__(
             "MTM2",
@@ -1256,6 +1261,33 @@ class M2(salobj.ConfigurableCsc):
 
         self._task_bump_test.cancel()
         await self._task_bump_test
+
+    async def _do_setHardpointList(self, data: salobj.BaseMsgType) -> None:
+        """Set the hardpoint list.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        self._assert_disabled()
+
+        # Check the hardpoints
+        yaml_file = self.config_dir / "harrisLUT" / "cell_geom.yaml"
+        cell_geom = read_yaml_file(yaml_file)
+
+        hardpoints = data.actuators
+        hardpoints.sort()
+
+        check_hardpoints(
+            cell_geom["locAct_axial"],
+            hardpoints[:NUM_HARDPOINTS_AXIAL],
+            hardpoints[NUM_HARDPOINTS_AXIAL:],
+        )
+
+        # TODO: support this at DM-41690 in the simulation mode
+        raise NotImplementedError("Command is not supported yet.")
 
     async def _execute_command(
         self,
