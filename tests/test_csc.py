@@ -1277,6 +1277,21 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
                 self.assertTrue(self.csc._is_bump_test_done())
 
+    async def test_setHardpointList(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            # This is to keep the backward compatibility of ts_xml v20.0.0 that
+            # does not have the 'setHardpointList' event defined in xml.
+            # TODO: Remove this after ts_xml v21.0.0.
+            if hasattr(self.remote, "cmd_setHardpointList"):
+                await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
+
+                with self.assertRaises(salobj.AckError):
+                    await self.remote.cmd_setHardpointList.set_start(
+                        actuators=[5, 6, 7, 73, 75, 77]
+                    )
+
     async def test_check_limit_switch(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
