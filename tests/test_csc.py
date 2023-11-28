@@ -850,10 +850,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Because the source is still ONBOARD, the M2 should not care about
             # the value from the MTMount. The default value is 0.
+            # The value of 0.94 here comes from the calibrated offset.
             inclinometer_rms = 0.05
             self.assertAlmostEqual(
                 np.mean(zenith_angle_values),
-                0,
+                0.94,
                 int(np.ceil(-np.log10(inclinometer_rms))) - 1,
             )
 
@@ -1287,10 +1288,22 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             if hasattr(self.remote, "cmd_setHardpointList"):
                 await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
 
+                # Bad hardpoints
                 with self.assertRaises(salobj.AckError):
                     await self.remote.cmd_setHardpointList.set_start(
                         actuators=[5, 6, 7, 73, 75, 77]
                     )
+
+                # Good hardpoints
+                self.remote.evt_hardpointList.flush()
+                await self.remote.cmd_setHardpointList.set_start(
+                    actuators=[3, 13, 23, 73, 75, 77]
+                )
+
+                data_hardpoints = await self.remote.evt_hardpointList.next(
+                    flush=False, timeout=STD_TIMEOUT
+                )
+                self.assertEqual(data_hardpoints.actuators, [4, 14, 24, 74, 76, 78])
 
     async def test_check_limit_switch(self) -> None:
         async with self.make_csc(

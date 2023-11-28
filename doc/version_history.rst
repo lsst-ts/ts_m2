@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.11.2
+-------
+
+* Support the set of hardpoints in the simulation mode.
+* Fix the failed test for the update of **ts_m2com**.
+
 v0.11.1
 -------
 
