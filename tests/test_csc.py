@@ -115,6 +115,24 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
+            # Flush the topics
+            topics = [
+                "tcpIpConnected",
+                "commandableByDDS",
+                "hardpointList",
+                "interlock",
+                "inclinationTelemetrySource",
+                "temperatureOffset",
+                "digitalOutput",
+                "digitalInput",
+                "config",
+                "closedLoopControlMode",
+                "enabledFaultsMask",
+                "configurationFiles",
+            ]
+            for topic in topics:
+                getattr(self.remote, f"evt_{topic}").flush()
+
             # Enter the Disabled state to construct the connection
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
@@ -144,72 +162,66 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(mock_model.control_open_loop.inclinometer_angle, 90.0)
 
             # Check the welcome messages
-            data_tcpIp = await self.remote.evt_tcpIpConnected.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertTrue(data_tcpIp.isConnected)
-
-            data_commandable = await self.remote.evt_commandableByDDS.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertTrue(data_commandable.state)
-
-            data_hardpoints = await self.remote.evt_hardpointList.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertEqual(data_hardpoints.actuators, [6, 16, 26, 74, 76, 78])
-
-            data_interlock = await self.remote.evt_interlock.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertFalse(data_interlock.state)
-
-            data_inclination_src = (
-                await self.remote.evt_inclinationTelemetrySource.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-            )
-            self.assertEqual(
-                data_inclination_src.source,
-                int(MTM2.InclinationTelemetrySource.ONBOARD),
+            await self.assert_next_sample(
+                self.remote.evt_tcpIpConnected, timeout=STD_TIMEOUT, isConnected=True
             )
 
-            data_temp_offset = await self.remote.evt_temperatureOffset.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertEqual(data_temp_offset.ring, [21.0] * NUM_TEMPERATURE_RING)
-            self.assertEqual(data_temp_offset.intake, [0.0] * NUM_TEMPERATURE_INTAKE)
-            self.assertEqual(data_temp_offset.exhaust, [0.0] * NUM_TEMPERATURE_EXHAUST)
-
-            data_digital_output = await self.remote.evt_digitalOutput.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertEqual(data_digital_output.value, TEST_DIGITAL_OUTPUT_NO_POWER)
-
-            data_digital_input = await self.remote.evt_digitalInput.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertEqual(data_digital_input.value, hex(TEST_DIGITAL_INPUT_NO_POWER))
-
-            data_config = await self.remote.evt_config.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
-            self.assertEqual(data_config.cellTemperatureDelta, 2.0)
-
-            data_closed_loop_control_mode = (
-                await self.remote.evt_closedLoopControlMode.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-            )
-            self.assertEqual(
-                data_closed_loop_control_mode.mode, MTM2.ClosedLoopControlMode.Idle
+            await self.assert_next_sample(
+                self.remote.evt_commandableByDDS, timeout=STD_TIMEOUT, state=True
             )
 
-            data_enabled_faults_mask = await self.remote.evt_enabledFaultsMask.next(
-                flush=False, timeout=STD_TIMEOUT
+            await self.assert_next_sample(
+                self.remote.evt_hardpointList,
+                timeout=STD_TIMEOUT,
+                actuators=[6, 16, 26, 74, 76, 78],
             )
-            self.assertEqual(
-                data_enabled_faults_mask.mask, hex(DEFAULT_ENABLED_FAULTS_MASK)
+
+            await self.assert_next_sample(
+                self.remote.evt_interlock, timeout=STD_TIMEOUT, state=False
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_inclinationTelemetrySource,
+                timeout=STD_TIMEOUT,
+                source=int(MTM2.InclinationTelemetrySource.ONBOARD),
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_temperatureOffset,
+                timeout=STD_TIMEOUT,
+                ring=[21.0] * NUM_TEMPERATURE_RING,
+                intake=[0.0] * NUM_TEMPERATURE_INTAKE,
+                exhaust=[0.0] * NUM_TEMPERATURE_EXHAUST,
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_digitalOutput,
+                timeout=STD_TIMEOUT,
+                value=TEST_DIGITAL_OUTPUT_NO_POWER,
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_digitalInput,
+                timeout=STD_TIMEOUT,
+                value=hex(TEST_DIGITAL_INPUT_NO_POWER),
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_config,
+                timeout=STD_TIMEOUT,
+                cellTemperatureDelta=2.0,
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_closedLoopControlMode,
+                timeout=STD_TIMEOUT,
+                mode=MTM2.ClosedLoopControlMode.Idle,
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_enabledFaultsMask,
+                timeout=STD_TIMEOUT,
+                mask=hex(DEFAULT_ENABLED_FAULTS_MASK),
             )
 
             data_configuration_files = await self.remote.evt_configurationFiles.next(
@@ -622,21 +634,17 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 mock_model.control_closed_loop.tangent_forces["applied"], tangent
             )
 
-            in_position = (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-            ).inPosition
+            await self.assert_next_sample(
+                self.remote.evt_m2AssemblyInPosition,
+                timeout=STD_TIMEOUT,
+                inPosition=False,
+            )
 
-            self.assertFalse(in_position)
-
-            in_position = (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-            ).inPosition
-
-            self.assertTrue(in_position)
+            await self.assert_next_sample(
+                self.remote.evt_m2AssemblyInPosition,
+                timeout=STD_TIMEOUT,
+                inPosition=True,
+            )
 
             tangent_forces = await self.remote.tel_tangentForce.next(
                 flush=True, timeout=STD_TIMEOUT
@@ -659,21 +667,17 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             await self.remote.cmd_resetForceOffsets.start(timeout=STD_TIMEOUT)
 
-            in_position = (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-            ).inPosition
+            await self.assert_next_sample(
+                self.remote.evt_m2AssemblyInPosition,
+                timeout=STD_TIMEOUT,
+                inPosition=False,
+            )
 
-            self.assertFalse(in_position)
-
-            in_position = (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-            ).inPosition
-
-            self.assertTrue(in_position)
+            await self.assert_next_sample(
+                self.remote.evt_m2AssemblyInPosition,
+                timeout=STD_TIMEOUT,
+                inPosition=True,
+            )
 
             self.assertEqual(
                 np.sum(np.abs(mock_model.control_closed_loop.axial_forces["applied"])),
@@ -766,9 +770,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                     )
                 ).inPosition
 
-            # m2AssemblyInPosition is now in position, ready to reposition it.
-            self.remote.evt_m2AssemblyInPosition.flush()
-
             # Wait for some time for the closed-loop control to be done
             await asyncio.sleep(STD_TIMEOUT)
 
@@ -782,25 +783,25 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 "yRot": 250,
                 "zRot": 350,
             }
+
+            # m2AssemblyInPosition is now in position, ready to reposition it.
+            self.remote.evt_m2AssemblyInPosition.flush()
+
             await self.remote.cmd_positionMirror.set_start(
                 **position_send, timeout=STD_TIMEOUT
             )
 
-            in_position = (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-            ).inPosition
+            await self.assert_next_sample(
+                self.remote.evt_m2AssemblyInPosition,
+                timeout=STD_TIMEOUT,
+                inPosition=False,
+            )
 
-            self.assertFalse(in_position)
-
-            in_position = (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-            ).inPosition
-
-            self.assertTrue(in_position)
+            await self.assert_next_sample(
+                self.remote.evt_m2AssemblyInPosition,
+                timeout=STD_TIMEOUT,
+                inPosition=True,
+            )
 
             # Check the new position
             tolerance = 50
@@ -850,10 +851,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Because the source is still ONBOARD, the M2 should not care about
             # the value from the MTMount. The default value is 0.
+            # The value of 0.94 here comes from the calibrated offset.
             inclinometer_rms = 0.05
             self.assertAlmostEqual(
                 np.mean(zenith_angle_values),
-                0,
+                0.94,
                 int(np.ceil(-np.log10(inclinometer_rms))) - 1,
             )
 
@@ -1195,13 +1197,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # does not have the 'actuatorBumpTestStatus' event defined in xml.
             # TODO: Remove this after ts_xml v20.1.0.
             if hasattr(self.remote, "evt_actuatorBumpTestStatus"):
-                data_status = await self.remote.evt_actuatorBumpTestStatus.next(
-                    flush=False, timeout=STD_TIMEOUT
+                await self.assert_next_sample(
+                    self.remote.evt_actuatorBumpTestStatus,
+                    timeout=STD_TIMEOUT,
+                    actuator=1,
+                    status=MTM2.BumpTest.TESTINGPOSITIVE,
                 )
-                self.assertEqual(data_status.actuator, 1)
-                self.assertEqual(data_status.status, MTM2.BumpTest.TESTINGPOSITIVE)
 
-            await asyncio.sleep(5 * period)
+            await asyncio.sleep(6 * period)
 
             # This is to keep the backward compatibility of ts_xml v20.0.0 that
             # does not have the 'actuatorBumpTestStatus' event defined in xml.
@@ -1216,7 +1219,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 actuator=73, force=force, period=period
             )
 
-            await asyncio.sleep(5 * period)
+            await asyncio.sleep(6 * period)
 
             # Check the event
 
@@ -1251,6 +1254,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Kill the running bump test
             self.csc._task_bump_test.cancel()
+            await self.csc._task_bump_test
 
     async def test_killActuatorBumpTest(self) -> None:
         async with self.make_csc(
@@ -1287,10 +1291,22 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             if hasattr(self.remote, "cmd_setHardpointList"):
                 await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
 
+                # Bad hardpoints
                 with self.assertRaises(salobj.AckError):
                     await self.remote.cmd_setHardpointList.set_start(
                         actuators=[5, 6, 7, 73, 75, 77]
                     )
+
+                # Good hardpoints
+                self.remote.evt_hardpointList.flush()
+                await self.remote.cmd_setHardpointList.set_start(
+                    actuators=[3, 13, 23, 73, 75, 77]
+                )
+
+                data_hardpoints = await self.remote.evt_hardpointList.next(
+                    flush=False, timeout=STD_TIMEOUT
+                )
+                self.assertEqual(data_hardpoints.actuators, [4, 14, 24, 74, 76, 78])
 
     async def test_check_limit_switch(self) -> None:
         async with self.make_csc(
