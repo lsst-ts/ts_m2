@@ -1286,8 +1286,20 @@ class M2(salobj.ConfigurableCsc):
             hardpoints[NUM_HARDPOINTS_AXIAL:],
         )
 
-        # TODO: support this at DM-41690 in the simulation mode
-        raise NotImplementedError("Command is not supported yet.")
+        if self.simulation_mode == 1:
+            await self.cmd_setHardpointList.ack_in_progress(
+                data, timeout=self.COMMAND_TIMEOUT
+            )
+
+            await self._execute_command(
+                self.controller_cell.set_hardpoint_list,
+                hardpoints,
+            )
+
+        else:
+            # TODO: Support this after the update of M2 cell LabVIEW code is
+            # done.
+            raise NotImplementedError("Command is not supported yet.")
 
     async def _execute_command(
         self,
