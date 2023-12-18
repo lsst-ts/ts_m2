@@ -376,11 +376,21 @@ class M2(salobj.ConfigurableCsc):
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
 
         # Clear all the existed error if any
-        if self.controller_cell.error_handler.exists_error():
+        if self._exists_error_in_controller():
             await self._clear_controller_errors()
 
         # Sleep for some time to process the messages
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
+
+    def _exists_error_in_controller(self) -> bool:
+        """Exists the error in the controller or not.
+
+        Returns
+        -------
+        `bool`
+            True if there is the error. Otherwise, False.
+        """
+        return self.controller_cell.error_handler.exists_error()
 
     async def _connect_server(self, timeout: float) -> None:
         """Connect the TCP/IP server.
@@ -464,6 +474,10 @@ class M2(salobj.ConfigurableCsc):
 
         await self._bypass_error_codes()
 
+        # Check there is any existed error or not
+        if self._exists_error_in_controller():
+            raise RuntimeError("Error exists. Try to clear the error first.")
+
         # Reset motor and communication power breakers bits and cRIO interlock
         # bit. Based on the original developer in ts_mtm2, this is required to
         # make the power system works correctly.
@@ -510,12 +524,18 @@ class M2(salobj.ConfigurableCsc):
             True,
             timeout=self.COMMAND_TIMEOUT_LONG,
         )
-        await self._execute_command(
-            self.controller_cell.power,
-            MTM2.PowerType.Motor,
-            True,
-            timeout=self.COMMAND_TIMEOUT_LONG,
-        )
+
+        try:
+            await self._execute_command(
+                self.controller_cell.power,
+                MTM2.PowerType.Motor,
+                True,
+                timeout=self.COMMAND_TIMEOUT_LONG,
+            )
+
+        except RuntimeError as error:
+            error.add_note("Please check/reset the interlock or power system.")
+            raise
 
         if not self.controller_cell.are_ilc_modes_enabled():
             try:
@@ -525,17 +545,25 @@ class M2(salobj.ConfigurableCsc):
                     retry_times=self.ilc_retry_times,  # type: ignore[arg-type]
                 )
 
-            except RuntimeError:
-                # TODO: Publish the list of failed ILCs after the DM-40146 is
-                # done.
+            except RuntimeError as error:
                 await self._basic_cleanup_and_power_off_motor()
+
+                error.add_note("Power-off the motor.")
                 raise
 
-        await self._execute_command(
-            self.controller_cell.set_closed_loop_control_mode,
-            MTM2.ClosedLoopControlMode.OpenLoop,
-            timeout=self.COMMAND_TIMEOUT_LONG,
-        )
+        try:
+            await self._execute_command(
+                self.controller_cell.set_closed_loop_control_mode,
+                MTM2.ClosedLoopControlMode.OpenLoop,
+                timeout=self.COMMAND_TIMEOUT_LONG,
+            )
+
+        except RuntimeError as error:
+            if self._exists_error_in_controller():
+                error.add_note(
+                    "The existed error blocks the transition to open-loop control."
+                )
+            raise
 
         # Wait for some time before transitioning to the closed-loop control
         await asyncio.sleep(self.SLEEP_TIME_MEDIUM)

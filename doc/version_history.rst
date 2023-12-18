@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.11.3
+-------
+
+* Improve the debug message of ``M2.do_enable()``.
+
 v0.11.2
 -------
 
