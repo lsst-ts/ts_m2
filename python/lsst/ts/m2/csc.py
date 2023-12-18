@@ -472,11 +472,18 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT_LONG_ENABLE
         )
 
+        self.log.info("Bypass the error codes.")
         await self._bypass_error_codes()
 
         # Check there is any existed error or not
         if self._exists_error_in_controller():
-            raise RuntimeError("Error exists. Try to clear the error first.")
+            raise RuntimeError(
+                "The M2 controller has active errors that cannot be cleared."
+                " Please, check the error table in the GUI and clear the "
+                "errors before proceeding. You may also have to check the "
+                "GIS for any active interlocks. See documentation for "
+                "additional troubleshooting information."
+            )
 
         # Reset motor and communication power breakers bits and cRIO interlock
         # bit. Based on the original developer in ts_mtm2, this is required to
@@ -484,6 +491,9 @@ class M2(salobj.ConfigurableCsc):
 
         # TODO: Check with electrical engineer that I need to reset the cRIO
         # interlock or not in a latter time.
+        self.log.info(
+            "Reset the motor and communication power breakers and cRIO interlock bits."
+        )
         for idx in range(2, 5):
             await self._execute_command(
                 self.controller_cell.set_bit_digital_status,
@@ -494,22 +504,29 @@ class M2(salobj.ConfigurableCsc):
         # I don't understand why I need to put the CLC mode to be Idle twice.
         # This is translated from the ts_mtm2 and I need this to make the M2
         # cRIO simulator to work.
+        self.log.info("Set closed loop control mode to idle.")
         await self._execute_command(
             self.controller_cell.set_closed_loop_control_mode,
             MTM2.ClosedLoopControlMode.Idle,
         )
 
+        self.log.info("Load the configuration.")
         await self._execute_command(
             self.controller_cell.load_configuration,
         )
+
+        self.log.info("Set control parameters.")
         await self._execute_command(
             self.controller_cell.set_control_parameters,
         )
 
+        self.log.info("Set closed loop control mode to idle.")
         await self._execute_command(
             self.controller_cell.set_closed_loop_control_mode,
             MTM2.ClosedLoopControlMode.Idle,
         )
+
+        self.log.info("Reset the force offsets and actuator steps.")
         await self._execute_command(
             self.controller_cell.reset_force_offsets,
         )
@@ -518,6 +535,7 @@ class M2(salobj.ConfigurableCsc):
         )
 
         # Power on the system and enable the ILCs
+        self.log.info("Power-on the communication.")
         await self._execute_command(
             self.controller_cell.power,
             MTM2.PowerType.Communication,
@@ -525,6 +543,7 @@ class M2(salobj.ConfigurableCsc):
             timeout=self.COMMAND_TIMEOUT_LONG,
         )
 
+        self.log.info("Power-on the motor.")
         try:
             await self._execute_command(
                 self.controller_cell.power,
@@ -534,9 +553,12 @@ class M2(salobj.ConfigurableCsc):
             )
 
         except RuntimeError as error:
-            error.add_note("Please check/reset the interlock or power system.")
+            error.add_note(
+                "Failed to power up motors, please check/reset the interlock or power system."
+            )
             raise
 
+        self.log.info("Enable the ILCs.")
         if not self.controller_cell.are_ilc_modes_enabled():
             try:
                 await self._execute_command(
@@ -548,9 +570,15 @@ class M2(salobj.ConfigurableCsc):
             except RuntimeError as error:
                 await self._basic_cleanup_and_power_off_motor()
 
-                error.add_note("Power-off the motor.")
+                error.add_note(
+                    "Failed to enable ILCs. Powering off motors. Please try"
+                    "to run the enable command again. If it still fails, use"
+                    " the GUI to debug the ILCs. It worths to try the"
+                    " power-cycle as well."
+                )
                 raise
 
+        self.log.info("Set closed loop control mode to open-loop control.")
         try:
             await self._execute_command(
                 self.controller_cell.set_closed_loop_control_mode,
@@ -561,13 +589,17 @@ class M2(salobj.ConfigurableCsc):
         except RuntimeError as error:
             if self._exists_error_in_controller():
                 error.add_note(
-                    "The existed error blocks the transition to open-loop control."
+                    "Cannot transition to open-loop control due to existing"
+                    " errors. This implies the M2 might have the bad"
+                    "force/moment distribution. Use the M2 GUI to fix the"
+                    " possible issues."
                 )
             raise
 
         # Wait for some time before transitioning to the closed-loop control
         await asyncio.sleep(self.SLEEP_TIME_MEDIUM)
 
+        self.log.info("Switch on the force balance system.")
         await self._switch_force_balance_system(True)
 
         # Wait for some time to stabilize the system
