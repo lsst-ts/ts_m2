@@ -68,9 +68,6 @@ class M2(salobj.ConfigurableCsc):
     port_telemetry : `int` or `None`, optional
         Telemetry port number of the TCP/IP interface. (the default is None and
         the value in ts_config_mttcs configuration files will be applied.)
-    timeout_in_second : `float`, optional
-        Time limit for reading data from the TCP/IP interface (sec). (the
-        default is 0.05)
     config_dir : `str`, `pathlib.Path`, or None, optional
         Directory of configuration files, or None for the standard
         configuration directory (obtained from `_get_default_config_dir`).
@@ -119,7 +116,6 @@ class M2(salobj.ConfigurableCsc):
         host: str | None = None,
         port_command: int | None = None,
         port_telemetry: int | None = None,
-        timeout_in_second: float = 0.05,
         config_dir: salobj.PathType | None = None,
         initial_state: salobj.State = salobj.State.STANDBY,
         simulation_mode: int = 0,
@@ -150,13 +146,18 @@ class M2(salobj.ConfigurableCsc):
             self.log.addHandler(stream_handler)
             self.log.setLevel(logging.DEBUG)
 
+        # Setup the controller
         self.controller_cell = ControllerCell(
             log=self.log,
-            timeout_in_second=timeout_in_second,
             is_csc=True,
             host=host,
             port_command=port_command,
             port_telemetry=port_telemetry,
+        )
+        self.controller_cell.set_callback_process_event(self._process_event)
+        self.controller_cell.set_callback_process_telemetry(self._process_telemetry)
+        self.controller_cell.set_callback_process_lost_connection(
+            self._process_lost_connection
         )
 
         # Translator to translate the message from component for the SAL topic
@@ -213,7 +214,7 @@ class M2(salobj.ConfigurableCsc):
         )
 
     async def close_tasks(self) -> None:
-        await self.controller_cell.close_tasks()
+        await self.controller_cell.close_controller_and_mock_server()
 
         await super().close_tasks()
 
@@ -232,20 +233,6 @@ class M2(salobj.ConfigurableCsc):
 
         if (self.simulation_mode == 1) and (self.controller_cell.mock_server is None):
             await self.controller_cell.run_mock_server(self.config_dir, "harrisLUT")
-
-        # Run the event and telemetry loops
-        if self.controller_cell.run_loops is False:
-            self.controller_cell.run_loops = True
-
-            self.log.debug(
-                "Starting event, telemetry and connection monitor loop tasks."
-            )
-
-            self.controller_cell.start_task_event_loop(self._process_event)
-            self.controller_cell.start_task_telemetry_loop(self._process_telemetry)
-            self.controller_cell.start_task_connection_monitor_loop(
-                self._process_lost_connection
-            )
 
     async def _process_event(self, message: dict | None = None) -> None:
         """Process the events from the M2 controller.
@@ -273,7 +260,7 @@ class M2(salobj.ConfigurableCsc):
 
         # Fault the CSC when needed
         if self.system_is_ready and (self.summary_state != salobj.State.FAULT):
-            if self.controller_cell.error_handler.exists_error():
+            if self._exists_error_in_controller():
                 await self.fault(
                     code=ErrorCode.ControllerInFault,
                     report="Controller's state is Fault.",
@@ -428,7 +415,7 @@ class M2(salobj.ConfigurableCsc):
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
 
         # Try to clear the error if any
-        if self.controller_cell.error_handler.exists_error():
+        if self._exists_error_in_controller():
             try:
                 await self._clear_controller_errors()
 
@@ -459,8 +446,6 @@ class M2(salobj.ConfigurableCsc):
 
         # Disconnect from the server
         await self.controller_cell.close()
-
-        await self.controller_cell.stop_loops()
 
         # Clear the internal data
         self._error_codes_bypass.clear()
