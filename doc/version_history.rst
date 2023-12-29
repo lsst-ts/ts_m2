@@ -2,10 +2,11 @@
 Version History
 ===============
 
-v0.11.4
+v0.12.0
 -------
 
 * Adapt the update in **ts_m2com**.
+* Remove the ``getattr()`` to improve the performance of SAL publishment.
 
 v0.11.3
 -------
