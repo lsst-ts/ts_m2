@@ -72,7 +72,7 @@ The ``salobj.set_summary_state()`` call is used to switch to *ENABLED* state.
 
 In the *ts_salobj* v6.0.3, the user can not create the **Remote** object in ipython directly.
 Instead, you need to create an event loop by yourself and do the related instantiation.
-You may need to check the environment variable of **LSST_DDS_PARTITION_PREFIX** exists or not.
+You may need to check the environment variables of **LSST_DDS_PARTITION_PREFIX** and **LSST_SITE** exist or not.
 For example,
 
 .. code:: python
