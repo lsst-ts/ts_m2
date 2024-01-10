@@ -68,9 +68,6 @@ class M2(salobj.ConfigurableCsc):
     port_telemetry : `int` or `None`, optional
         Telemetry port number of the TCP/IP interface. (the default is None and
         the value in ts_config_mttcs configuration files will be applied.)
-    timeout_in_second : `float`, optional
-        Time limit for reading data from the TCP/IP interface (sec). (the
-        default is 0.05)
     config_dir : `str`, `pathlib.Path`, or None, optional
         Directory of configuration files, or None for the standard
         configuration directory (obtained from `_get_default_config_dir`).
@@ -119,7 +116,6 @@ class M2(salobj.ConfigurableCsc):
         host: str | None = None,
         port_command: int | None = None,
         port_telemetry: int | None = None,
-        timeout_in_second: float = 0.05,
         config_dir: salobj.PathType | None = None,
         initial_state: salobj.State = salobj.State.STANDBY,
         simulation_mode: int = 0,
@@ -150,13 +146,18 @@ class M2(salobj.ConfigurableCsc):
             self.log.addHandler(stream_handler)
             self.log.setLevel(logging.DEBUG)
 
+        # Setup the controller
         self.controller_cell = ControllerCell(
             log=self.log,
-            timeout_in_second=timeout_in_second,
             is_csc=True,
             host=host,
             port_command=port_command,
             port_telemetry=port_telemetry,
+        )
+        self.controller_cell.set_callback_process_event(self._process_event)
+        self.controller_cell.set_callback_process_telemetry(self._process_telemetry)
+        self.controller_cell.set_callback_process_lost_connection(
+            self._process_lost_connection
         )
 
         # Translator to translate the message from component for the SAL topic
@@ -213,7 +214,7 @@ class M2(salobj.ConfigurableCsc):
         )
 
     async def close_tasks(self) -> None:
-        await self.controller_cell.close_tasks()
+        await self.controller_cell.close_controller_and_mock_server()
 
         await super().close_tasks()
 
@@ -233,20 +234,6 @@ class M2(salobj.ConfigurableCsc):
         if (self.simulation_mode == 1) and (self.controller_cell.mock_server is None):
             await self.controller_cell.run_mock_server(self.config_dir, "harrisLUT")
 
-        # Run the event and telemetry loops
-        if self.controller_cell.run_loops is False:
-            self.controller_cell.run_loops = True
-
-            self.log.debug(
-                "Starting event, telemetry and connection monitor loop tasks."
-            )
-
-            self.controller_cell.start_task_event_loop(self._process_event)
-            self.controller_cell.start_task_telemetry_loop(self._process_telemetry)
-            self.controller_cell.start_task_connection_monitor_loop(
-                self._process_lost_connection
-            )
-
     async def _process_event(self, message: dict | None = None) -> None:
         """Process the events from the M2 controller.
 
@@ -265,7 +252,7 @@ class M2(salobj.ConfigurableCsc):
                     message["retract"], message["extend"]
                 )
             else:
-                await self._publish_message_by_sal("evt_", message)
+                await self._publish_message_by_sal(message)
 
             # Check the interlock status
             if (message["id"] == "interlock") and (message["state"] is True):
@@ -273,7 +260,7 @@ class M2(salobj.ConfigurableCsc):
 
         # Fault the CSC when needed
         if self.system_is_ready and (self.summary_state != salobj.State.FAULT):
-            if self.controller_cell.error_handler.exists_error():
+            if self._exists_error_in_controller():
                 await self.fault(
                     code=ErrorCode.ControllerInFault,
                     report="Controller's state is Fault.",
@@ -300,45 +287,352 @@ class M2(salobj.ConfigurableCsc):
 
         for limit_switch in limit_switch_retract:
             await self._publish_message_by_sal(
-                "evt_", dict(id="limitSwitchRetract", actuatorId=limit_switch)
+                dict(id="limitSwitchRetract", actuatorId=limit_switch)
             )
 
         for limit_switch in limit_switch_extend:
             await self._publish_message_by_sal(
-                "evt_", dict(id="limitSwitchExtend", actuatorId=limit_switch)
+                dict(id="limitSwitchExtend", actuatorId=limit_switch)
             )
 
     async def _publish_message_by_sal(
-        self, prefix_sal_topic: str, message: dict
+        self, message: dict, is_event: bool = True
     ) -> None:
         """Publish the message from component by SAL.
 
         Parameters
         ----------
-        prefix_sal_topic : `str`
-            Prefix of the SAL topic.
+        message : `dict`
+            Message from the component.
+        is_event : `bool`, optional
+            Is the event or not. If not, it should be the telemetry (the
+            default is True)
+        """
+
+        if "id" not in message.keys():
+            return
+
+        message_payload = self._translator.translate(message)
+
+        try:
+            if is_event:
+                await self._publish_sal_event(message_payload)
+            else:
+                await self._publish_sal_telemetry(message_payload)
+
+        except Exception as error:
+            self.log.debug(f"Error in publishing data: {error!r}.")
+
+    async def _publish_sal_event(self, message: dict) -> None:
+        """Publish the SAL event.
+
+        Parameters
+        ----------
         message : `dict`
             Message from the component.
         """
 
-        message_payload = self._translator.translate(message)
+        message_name = message["id"]
+        match message_name:
+            case "m2AssemblyInPosition":
+                await self.evt_m2AssemblyInPosition.set_write(
+                    inPosition=message["inPosition"],
+                )
 
-        message_name = message_payload["id"]
-        sal_topic_name = prefix_sal_topic + message_name
+            case "cellTemperatureHiWarning":
+                await self.evt_cellTemperatureHiWarning.set_write(
+                    hiWarning=message["hiWarning"],
+                )
 
-        if hasattr(self, sal_topic_name):
-            message_payload.pop("id")
+            case "detailedState":
+                await self.evt_detailedState.set_write(
+                    detailedState=message["detailedState"],
+                )
 
-            try:
-                await getattr(self, sal_topic_name).set_write(**message_payload)
-            except Exception as error:
-                self.log.debug(f"Error in publishing data: {error!r}.")
+            case "controllerState":
+                await self.evt_controllerState.set_write(
+                    controllerState=message["controllerState"],
+                )
 
-        else:
-            message_name_original = message["id"]
-            self.log.warning(
-                f"Unspecified message: {message_name_original}, ignoring..."
-            )
+            case "commandableByDDS":
+                await self.evt_commandableByDDS.set_write(
+                    state=message["state"],
+                )
+
+            case "interlock":
+                await self.evt_interlock.set_write(
+                    state=message["state"],
+                )
+
+            case "tcpIpConnected":
+                await self.evt_tcpIpConnected.set_write(
+                    isConnected=message["isConnected"],
+                )
+
+            case "hardpointList":
+                await self.evt_hardpointList.set_write(
+                    actuators=message["actuators"],
+                )
+
+            case "forceBalanceSystemStatus":
+                await self.evt_forceBalanceSystemStatus.set_write(
+                    status=message["status"],
+                )
+
+            case "inclinationTelemetrySource":
+                await self.evt_inclinationTelemetrySource.set_write(
+                    source=message["source"],
+                )
+
+            case "temperatureOffset":
+                await self.evt_temperatureOffset.set_write(
+                    ring=message["ring"],
+                    intake=message["intake"],
+                    exhaust=message["exhaust"],
+                )
+
+            case "scriptExecutionStatus":
+                await self.evt_scriptExecutionStatus.set_write(
+                    percentage=message["percentage"],
+                )
+
+            case "digitalOutput":
+                await self.evt_digitalOutput.set_write(
+                    value=message["value"],
+                )
+
+            case "digitalInput":
+                await self.evt_digitalInput.set_write(
+                    value=message["value"],
+                )
+
+            case "config":
+                await self.evt_config.set_write(
+                    configuration=message["configuration"],
+                    version=message["version"],
+                    controlParameters=message["controlParameters"],
+                    lutParameters=message["lutParameters"],
+                    powerWarningMotor=message["powerWarningMotor"],
+                    powerFaultMotor=message["powerFaultMotor"],
+                    powerThresholdMotor=message["powerThresholdMotor"],
+                    powerWarningComm=message["powerWarningComm"],
+                    powerFaultComm=message["powerFaultComm"],
+                    powerThresholdComm=message["powerThresholdComm"],
+                    inPositionAxial=message["inPositionAxial"],
+                    inPositionTangent=message["inPositionTangent"],
+                    inPositionSample=message["inPositionSample"],
+                    cellTemperatureDelta=message["cellTemperatureDelta"],
+                )
+
+            case "openLoopMaxLimit":
+                await self.evt_openLoopMaxLimit.set_write(
+                    status=message["status"],
+                )
+
+            case "limitSwitchRetract":
+                await self.evt_limitSwitchRetract.set_write(
+                    actuatorId=message["actuatorId"],
+                )
+
+            case "limitSwitchExtend":
+                await self.evt_limitSwitchExtend.set_write(
+                    actuatorId=message["actuatorId"],
+                )
+
+            case "powerSystemState":
+                await self.evt_powerSystemState.set_write(
+                    powerType=message["powerType"],
+                    status=message["status"],
+                    state=message["state"],
+                )
+
+            case "closedLoopControlMode":
+                await self.evt_closedLoopControlMode.set_write(
+                    mode=message["mode"],
+                )
+
+            case "innerLoopControlMode":
+                await self.evt_innerLoopControlMode.set_write(
+                    address=message["address"],
+                    mode=message["mode"],
+                )
+
+            case "summaryFaultsStatus":
+                await self.evt_summaryFaultsStatus.set_write(
+                    status=message["status"],
+                )
+
+            case "enabledFaultsMask":
+                await self.evt_enabledFaultsMask.set_write(
+                    mask=message["mask"],
+                )
+
+            case "configurationFiles":
+                await self.evt_configurationFiles.set_write(
+                    files=message["files"],
+                )
+
+            case "actuatorBumpTestStatus":
+                await self.evt_actuatorBumpTestStatus.set_write(
+                    actuator=message["actuator"],
+                    status=message["status"],
+                )
+
+            case _:
+                self.log.warning(
+                    f"Unspecified event message: {message_name}, ignoring..."
+                )
+
+    async def _publish_sal_telemetry(self, message: dict) -> None:
+        """Publish the SAL telemetry.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+        """
+
+        message_name = message["id"]
+        match message_name:
+            case "position":
+                await self.tel_position.set_write(
+                    x=message["x"],
+                    y=message["y"],
+                    z=message["z"],
+                    xRot=message["xRot"],
+                    yRot=message["yRot"],
+                    zRot=message["zRot"],
+                )
+
+            case "positionIMS":
+                await self.tel_positionIMS.set_write(
+                    x=message["x"],
+                    y=message["y"],
+                    z=message["z"],
+                    xRot=message["xRot"],
+                    yRot=message["yRot"],
+                    zRot=message["zRot"],
+                )
+
+            case "axialForce":
+                await self.tel_axialForce.set_write(
+                    lutGravity=message["lutGravity"],
+                    lutTemperature=message["lutTemperature"],
+                    applied=message["applied"],
+                    measured=message["measured"],
+                    hardpointCorrection=message["hardpointCorrection"],
+                )
+
+            case "tangentForce":
+                await self.tel_tangentForce.set_write(
+                    lutGravity=message["lutGravity"],
+                    lutTemperature=message["lutTemperature"],
+                    applied=message["applied"],
+                    measured=message["measured"],
+                    hardpointCorrection=message["hardpointCorrection"],
+                )
+
+            case "temperature":
+                await self.tel_temperature.set_write(
+                    ring=message["ring"],
+                    intake=message["intake"],
+                    exhaust=message["exhaust"],
+                )
+
+            case "zenithAngle":
+                await self.tel_zenithAngle.set_write(
+                    measured=message["measured"],
+                    inclinometerRaw=message["inclinometerRaw"],
+                    inclinometerProcessed=message["inclinometerProcessed"],
+                )
+
+            case "inclinometerAngleTma":
+                await self.tel_inclinometerAngleTma.set_write(
+                    inclinometer=message["inclinometer"],
+                )
+
+            case "axialActuatorSteps":
+                await self.tel_axialActuatorSteps.set_write(
+                    steps=message["steps"],
+                )
+
+            case "tangentActuatorSteps":
+                await self.tel_tangentActuatorSteps.set_write(
+                    steps=message["steps"],
+                )
+
+            case "axialEncoderPositions":
+                await self.tel_axialEncoderPositions.set_write(
+                    position=message["position"],
+                )
+
+            case "tangentEncoderPositions":
+                await self.tel_tangentEncoderPositions.set_write(
+                    position=message["position"],
+                )
+
+            case "ilcData":
+                await self.tel_ilcData.set_write(
+                    status=message["status"],
+                )
+
+            case "displacementSensors":
+                await self.tel_displacementSensors.set_write(
+                    thetaZ=message["thetaZ"],
+                    deltaZ=message["deltaZ"],
+                )
+
+            case "forceBalance":
+                await self.tel_forceBalance.set_write(
+                    fx=message["fx"],
+                    fy=message["fy"],
+                    fz=message["fz"],
+                    mx=message["mx"],
+                    my=message["my"],
+                    mz=message["mz"],
+                )
+
+            case "netForcesTotal":
+                await self.tel_netForcesTotal.set_write(
+                    fx=message["fx"],
+                    fy=message["fy"],
+                    fz=message["fz"],
+                )
+
+            case "netMomentsTotal":
+                await self.tel_netMomentsTotal.set_write(
+                    mx=message["mx"],
+                    my=message["my"],
+                    mz=message["mz"],
+                )
+
+            case "powerStatus":
+                await self.tel_powerStatus.set_write(
+                    motorVoltage=message["motorVoltage"],
+                    motorCurrent=message["motorCurrent"],
+                    commVoltage=message["commVoltage"],
+                    commCurrent=message["commCurrent"],
+                )
+
+            case "powerStatusRaw":
+                await self.tel_powerStatusRaw.set_write(
+                    motorVoltage=message["motorVoltage"],
+                    motorCurrent=message["motorCurrent"],
+                    commVoltage=message["commVoltage"],
+                    commCurrent=message["commCurrent"],
+                )
+
+            case "forceErrorTangent":
+                await self.tel_forceErrorTangent.set_write(
+                    force=message["force"],
+                    weight=message["weight"],
+                    sum=message["sum"],
+                )
+
+            case _:
+                self.log.warning(
+                    f"Unspecified telemetry message: {message_name}, ignoring..."
+                )
 
     async def _process_telemetry(self, message: dict | None = None) -> None:
         """Process the telemetry from the M2 controller.
@@ -351,7 +645,7 @@ class M2(salobj.ConfigurableCsc):
 
         # Publish the SAL telemetry
         if isinstance(message, dict):
-            await self._publish_message_by_sal("tel_", message)
+            await self._publish_message_by_sal(message, is_event=False)
 
     async def _process_lost_connection(self) -> None:
         """Process the lost of connection."""
@@ -428,7 +722,7 @@ class M2(salobj.ConfigurableCsc):
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
 
         # Try to clear the error if any
-        if self.controller_cell.error_handler.exists_error():
+        if self._exists_error_in_controller():
             try:
                 await self._clear_controller_errors()
 
@@ -459,8 +753,6 @@ class M2(salobj.ConfigurableCsc):
 
         # Disconnect from the server
         await self.controller_cell.close()
-
-        await self.controller_cell.stop_loops()
 
         # Clear the internal data
         self._error_codes_bypass.clear()
