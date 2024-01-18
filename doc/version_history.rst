@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.12.1
+-------
+
+* Adapt the update in **ts_m2com**.
+
 v0.12.0
 -------
 
