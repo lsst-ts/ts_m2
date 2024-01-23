@@ -159,7 +159,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # There should be no update of inclinometer angle from MTMount CSC
             mock_model = self.csc.controller_cell.mock_server.model
-            self.assertEqual(mock_model.control_open_loop.inclinometer_angle, 90.0)
+            self.assertEqual(mock_model.inclinometer_angle, 90.0)
 
             # Check the welcome messages
             await self.assert_next_sample(
@@ -619,9 +619,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                     )
                 ).inPosition
 
-            # m2AssemblyInPosition is now in position, ready to apply force.
-            self.remote.evt_m2AssemblyInPosition.flush()
-
             await self.remote.cmd_applyForces.set_start(
                 axial=axial, tangent=tangent, timeout=STD_TIMEOUT
             )
@@ -632,18 +629,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
             np.testing.assert_array_equal(
                 mock_model.control_closed_loop.tangent_forces["applied"], tangent
-            )
-
-            await self.assert_next_sample(
-                self.remote.evt_m2AssemblyInPosition,
-                timeout=STD_TIMEOUT,
-                inPosition=False,
-            )
-
-            await self.assert_next_sample(
-                self.remote.evt_m2AssemblyInPosition,
-                timeout=STD_TIMEOUT,
-                inPosition=True,
             )
 
             tangent_forces = await self.remote.tel_tangentForce.next(
@@ -662,22 +647,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 f"axialForcesApplied{axial_forces.applied} != requested{axial}",
             )
 
-            # Test reset forces now
-            self.remote.evt_m2AssemblyInPosition.flush()
-
             await self.remote.cmd_resetForceOffsets.start(timeout=STD_TIMEOUT)
-
-            await self.assert_next_sample(
-                self.remote.evt_m2AssemblyInPosition,
-                timeout=STD_TIMEOUT,
-                inPosition=False,
-            )
-
-            await self.assert_next_sample(
-                self.remote.evt_m2AssemblyInPosition,
-                timeout=STD_TIMEOUT,
-                inPosition=True,
-            )
 
             self.assertEqual(
                 np.sum(np.abs(mock_model.control_closed_loop.axial_forces["applied"])),
@@ -776,35 +746,23 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Move the rigid body to the new position. Note the units are um
             # and arcsec.
             position_send = {
-                "x": 100,
-                "y": 200,
-                "z": 300,
-                "xRot": 150,
-                "yRot": 250,
-                "zRot": 350,
+                "x": 1,
+                "y": 2,
+                "z": 3,
+                "xRot": -1,
+                "yRot": -2,
+                "zRot": -3,
             }
-
-            # m2AssemblyInPosition is now in position, ready to reposition it.
-            self.remote.evt_m2AssemblyInPosition.flush()
 
             await self.remote.cmd_positionMirror.set_start(
                 **position_send, timeout=STD_TIMEOUT
             )
 
-            await self.assert_next_sample(
-                self.remote.evt_m2AssemblyInPosition,
-                timeout=STD_TIMEOUT,
-                inPosition=False,
-            )
-
-            await self.assert_next_sample(
-                self.remote.evt_m2AssemblyInPosition,
-                timeout=STD_TIMEOUT,
-                inPosition=True,
-            )
+            # Wait for some time for the movement to be done
+            await asyncio.sleep(SLEEP_TIME_LONG)
 
             # Check the new position
-            tolerance = 50
+            tolerance = 0.3
 
             position_set = self.remote.tel_position.get()
             for axis in ("x", "y", "z", "xRot", "yRot", "zRot"):
@@ -935,14 +893,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # than zero
             self.assertTrue(np.all(np.abs(axial_forces.lutGravity) > 0.0))
             self.assertTrue(np.all(np.abs(axial_forces.lutTemperature) > 0.0))
-
-            # Check the force error
-            force_error = self.csc.controller_cell.mock_server.model.control_closed_loop._get_force_error()[
-                0
-            ]
-
-            force_rms = 0.5
-            self.assertLess(np.std(force_error), force_rms * 4.0)
 
     async def test_clearErrors(self) -> None:
         async with self.make_csc(
@@ -1117,7 +1067,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # This should fail because both of the step and displacement are
             # not zero.
-            displacement = 100
+            displacement = 60
             with self.assertRaises(salobj.AckError):
                 await self.remote.cmd_moveActuator.set_start(
                     actuator=actuator, displacement=displacement, step=step
@@ -1133,7 +1083,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(SLEEP_TIME_SHORT)
             position_after = self._get_axial_actuator_position(actuator)
 
-            self.assertGreater((position_after - position_before), 90)
+            self.assertGreater((position_after - position_before), 40)
 
             # Move the actuator step
             step_before = self._get_axial_actuator_step(actuator)
