@@ -733,6 +733,20 @@ class M2(salobj.ConfigurableCsc):
 
         # Cleaning up
         if self.controller_cell.are_clients_connected():
+            # We need to check the closed-loop control mode and motor power
+            # status if the interlock was triggered.
+            if (
+                self.controller_cell.closed_loop_control_mode
+                == MTM2.ClosedLoopControlMode.ClosedLoop
+            ):
+                await self._switch_force_balance_system(False)
+
+            if (
+                self.controller_cell.power_system_status["motor_power_state"]
+                != MTM2.PowerSystemState.PoweredOff
+            ):
+                await self._basic_cleanup_and_power_off_motor()
+
             try:
                 await self._execute_command(
                     self.controller_cell.power,
