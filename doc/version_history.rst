@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.12.2
+-------
+
+* Improve the ``M2.do_standby()``.
+
 v0.12.1
 -------
 
