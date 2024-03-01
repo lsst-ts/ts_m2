@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.12.3
+-------
+
+* Report the **errorCode** event.
+
 v0.12.2
 -------
 

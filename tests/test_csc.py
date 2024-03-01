@@ -277,6 +277,10 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
+            # Flush the topics
+            for topic in ("errorCode", "summaryFaultsStatus"):
+                getattr(self.remote, f"evt_{topic}").flush()
+
             # Make the server fault
             mock_model = self.csc.controller_cell.mock_server.model
             mock_model.fault(MockErrorCode.LimitSwitchTriggeredClosedloop.value)
@@ -285,8 +289,24 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
 
             # Check the events
-            data_summary_faults_status = self.remote.evt_summaryFaultsStatus.get()
-            self.assertEqual(data_summary_faults_status.status, hex(2**6))
+            await self.assert_next_sample(
+                self.remote.evt_summaryFaultsStatus,
+                timeout=STD_TIMEOUT,
+                status=hex(2**6),
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_errorCode,
+                timeout=STD_TIMEOUT,
+                errorCode=1,
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_errorCode,
+                timeout=STD_TIMEOUT,
+                errorCode=6056,
+                errorReport="Actuator Limit Switch Triggered [Closed-loop]",
+            )
 
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
