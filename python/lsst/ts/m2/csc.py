@@ -41,7 +41,7 @@ from lsst.ts.m2com import (
     DigitalOutputStatus,
 )
 from lsst.ts.m2com import __version__ as __m2com_version__
-from lsst.ts.m2com import check_hardpoints, read_yaml_file
+from lsst.ts.m2com import check_hardpoints, read_error_code_file, read_yaml_file
 from lsst.ts.utils import make_done_future
 from lsst.ts.xml.component_info import ComponentInfo
 from lsst.ts.xml.enums import MTM2
@@ -177,6 +177,11 @@ class M2(salobj.ConfigurableCsc):
 
         # Bypassed error codes
         self._error_codes_bypass: set[int] = set()
+
+        # Content of the error codes
+        self._content_error_codes = read_error_code_file(
+            self.config_dir / "error_code.tsv"
+        )
 
         # Software version of the M2 common module
         self.evt_softwareVersions.set(subsystemVersions=f"ts-m2com={__m2com_version__}")
@@ -457,6 +462,13 @@ class M2(salobj.ConfigurableCsc):
                     mode=message["mode"],
                 )
 
+            case "errorCode":
+                error_code = message["errorCode"]
+                await self.evt_errorCode.set_write(
+                    errorCode=error_code,
+                    errorReport=self._get_error_report(error_code),
+                )
+
             case "summaryFaultsStatus":
                 await self.evt_summaryFaultsStatus.set_write(
                     status=message["status"],
@@ -482,6 +494,27 @@ class M2(salobj.ConfigurableCsc):
                 self.log.warning(
                     f"Unspecified event message: {message_name}, ignoring..."
                 )
+
+    def _get_error_report(self, error_code: int) -> str:
+        """Get the error report.
+
+        Parameters
+        ----------
+        error_code : `int`
+            Error code.
+
+        Returns
+        -------
+        `str`
+            Error report.
+        """
+
+        code = str(error_code)
+        return (
+            self._content_error_codes[code][0]
+            if code in self._content_error_codes.keys()
+            else ""
+        )
 
     async def _publish_sal_telemetry(self, message: dict) -> None:
         """Publish the SAL telemetry.
