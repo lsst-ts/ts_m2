@@ -19,8 +19,6 @@ pipeline {
         image_tag = "develop"
         user_ci = credentials('lsst-io')
         work_branches = "${CHANGE_BRANCH} ${GIT_BRANCH} develop"
-        // PlantUML url
-        PLANTUML_URL = "https://github.com/plantuml/plantuml/releases/download/v1.2021.13/plantuml-1.2021.13.jar"
         // ts_m2com url
         M2COM_URL = "https://github.com/lsst-ts/ts_m2com.git"
         // Authority to publish the document online
@@ -68,7 +66,7 @@ pipeline {
             steps {
                 withEnv(["HOME=${env.WORKSPACE}"]) {
                     sh """
-                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && curl -L ${PLANTUML_URL} -o plantuml.jar && pip install sphinxcontrib-plantuml && cd repo && eups declare -r . -t saluser && setup ts_m2 -t saluser && package-docs build && ltd upload --product ${DOCUMENT_NAME} --git-ref ${GIT_BRANCH} --dir doc/_build/html\"
+                    docker exec -u saluser \${container_name} sh -c \"source ~/.setup.sh && cd repo && eups declare -r . -t saluser && setup ts_m2 -t saluser && package-docs build && ltd upload --product ${DOCUMENT_NAME} --git-ref ${GIT_BRANCH} --dir doc/_build/html\"
                     """
                 }
             }
