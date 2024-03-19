@@ -15,8 +15,8 @@ doxylink = {}  # type: ignore # noqa
 intersphinx_mapping["ts_xml"] = ("https://ts-xml.lsst.io", None)  # type: ignore # noqa
 intersphinx_mapping["ts_salobj"] = ("https://ts-salobj.lsst.io", None)  # type: ignore # noqa
 
-# Support the sphinx extension of plantuml
-extensions.append("sphinxcontrib.plantuml")  # type: ignore # noqa
-
-# Put the path to plantuml.jar
-plantuml = "java -jar /home/saluser/plantuml.jar"
+# Support the sphinx extension of mermaid
+extensions = [
+    "sphinxcontrib.mermaid",
+    "sphinx_automodapi.automodapi",
+]
