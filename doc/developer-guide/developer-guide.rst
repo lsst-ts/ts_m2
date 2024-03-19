@@ -25,7 +25,7 @@ Architecture
 
 The classes in module are listed below.
 
-.. uml:: ../uml/m2_class.uml
+.. mermaid:: ../uml/m2_class.mmd
     :caption: Class diagram of M2
 
 * **M2** is a CSC class. It inherits from the *ts_salobj*'s **ConfigurableCsc**. *ts_salobj* provides interfaces for the SAL communication.
@@ -78,7 +78,7 @@ Usage
 
 To start the *M2* CSC, enter the following command:
 
-.. prompt:: bash
+.. code-block:: bash
 
     bin/run_mtm2
 

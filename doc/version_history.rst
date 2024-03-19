@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.12.4
+-------
+
+* Use the **mermaid** to replace the **PlantUML**.
+
 v0.12.3
 -------
 
@@ -83,12 +88,12 @@ v0.8.0
 * Migrate the functions to **Controller** class in **ts_m2com**.
 
 v0.7.11
-------
+-------
 
 * Deal with the condition that the controller's data might not be completed.
 
 v0.7.10
-------
+-------
 
 * Let ``M2.do_enable()`` call ``self.cmd_enable.ack_in_progress()`` directly and remove the ``M2.begin_enable()``.
 
