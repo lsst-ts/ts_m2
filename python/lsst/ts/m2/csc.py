@@ -30,10 +30,12 @@ import numpy as np
 from lsst.ts import salobj
 from lsst.ts.m2com import (
     DEFAULT_ENABLED_FAULTS_MASK,
+    ILC_READ_WARNING_ERROR_CODES,
     LIMIT_FORCE_AXIAL_CLOSED_LOOP,
     LIMIT_FORCE_TANGENT_CLOSED_LOOP,
     NUM_ACTUATOR,
     NUM_HARDPOINTS_AXIAL,
+    NUM_INNER_LOOP_CONTROLLER,
     NUM_TANGENT_LINK,
     ActuatorDisplacementUnit,
     CommandActuator,
@@ -43,7 +45,6 @@ from lsst.ts.m2com import (
 from lsst.ts.m2com import __version__ as __m2com_version__
 from lsst.ts.m2com import check_hardpoints, read_error_code_file, read_yaml_file
 from lsst.ts.utils import make_done_future
-from lsst.ts.xml.component_info import ComponentInfo
 from lsst.ts.xml.enums import MTM2
 
 from . import __version__
@@ -121,15 +122,6 @@ class M2(salobj.ConfigurableCsc):
         simulation_mode: int = 0,
         verbose: bool = False,
     ) -> None:
-        # This is to keep the backward compatibility of ts_xml v20.0.0 that
-        # does not have the 'killActuatorBumpTest' command defined in xml.
-        # TODO: Remove this after ts_xml v20.1.0.
-        component_info = ComponentInfo("MTM2", "sal")
-        if "cmd_killActuatorBumpTest" in component_info.topics:
-            setattr(self, "do_killActuatorBumpTest", self._do_killActuatorBumpTest)
-
-        if "cmd_setHardpointList" in component_info.topics:
-            setattr(self, "do_setHardpointList", self._do_setHardpointList)
 
         super().__init__(
             "MTM2",
@@ -378,6 +370,17 @@ class M2(salobj.ConfigurableCsc):
                 await self.evt_hardpointList.set_write(
                     actuators=message["actuators"],
                 )
+
+            case "bypassedActuatorILCs":
+                # This is to keep the backward compatibility of ts_xml v20.3.0
+                # that does not have the 'bypassedIlc' event defined in xml.
+                # TODO: Remove this after ts_xml v20.4.0.
+                if hasattr(self, "evt_disabledILC"):
+                    ilcs = [False] * NUM_INNER_LOOP_CONTROLLER
+                    for ilc in message["ilcs"]:
+                        ilcs[ilc - 1] = True
+
+                    await self.evt_disabledILC.set_write(ilcs=ilcs)
 
             case "forceBalanceSystemStatus":
                 await self.evt_forceBalanceSystemStatus.set_write(
@@ -958,8 +961,7 @@ class M2(salobj.ConfigurableCsc):
         """
 
         # Note the union() will return a new set object
-        ilc_codes_to_bypass = {1000, 1001, 6052}
-        codes_to_bypass = self._error_codes_bypass.union(ilc_codes_to_bypass)
+        codes_to_bypass = self._error_codes_bypass.union(ILC_READ_WARNING_ERROR_CODES)
 
         (
             enabled_faults_mask,
@@ -1630,15 +1632,11 @@ class M2(salobj.ConfigurableCsc):
             enum "BumpTest" is to maintain the backward compatibility.
         """
 
-        # This is to keep the backward compatibility of ts_xml v20.0.0 that
-        # does not have the 'actuatorBumpTestStatus' event defined in xml.
-        # TODO: Remove this after ts_xml v20.1.0.
-        if hasattr(self, "evt_actuatorBumpTestStatus"):
-            await self.evt_actuatorBumpTestStatus.set_write(
-                actuator=actuator, status=status.value
-            )
+        await self.evt_actuatorBumpTestStatus.set_write(
+            actuator=actuator, status=status.value
+        )
 
-    async def _do_killActuatorBumpTest(self, data: salobj.BaseMsgType) -> None:
+    async def do_killActuatorBumpTest(self, data: salobj.BaseMsgType) -> None:
         """Kill the running actuator bump test in the closed-loop control.
 
         Parameters
@@ -1661,7 +1659,7 @@ class M2(salobj.ConfigurableCsc):
         self._task_bump_test.cancel()
         await self._task_bump_test
 
-    async def _do_setHardpointList(self, data: salobj.BaseMsgType) -> None:
+    async def do_setHardpointList(self, data: salobj.BaseMsgType) -> None:
         """Set the hardpoint list.
 
         Parameters

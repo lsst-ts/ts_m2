@@ -2,6 +2,14 @@
 Version History
 ===============
 
+v0.12.5
+-------
+
+* Update the version of ts-conda-build to 0.4 in the conda recipe.
+* Use the **ILC_READ_WARNING_ERROR_CODES** from **ts_m2com**.
+* Publish the disabled/bypassed ILC event.
+* Remove the code related to the backward compatibily of **ts_xml** v20.1.0.
+
 v0.12.4
 -------
 
