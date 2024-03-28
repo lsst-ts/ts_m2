@@ -30,6 +30,7 @@ import numpy as np
 from lsst.ts import salobj
 from lsst.ts.m2com import (
     DEFAULT_ENABLED_FAULTS_MASK,
+    ILC_READ_WARNING_ERROR_CODES,
     LIMIT_FORCE_AXIAL_CLOSED_LOOP,
     LIMIT_FORCE_TANGENT_CLOSED_LOOP,
     NUM_ACTUATOR,
@@ -958,8 +959,7 @@ class M2(salobj.ConfigurableCsc):
         """
 
         # Note the union() will return a new set object
-        ilc_codes_to_bypass = {1000, 1001, 6052}
-        codes_to_bypass = self._error_codes_bypass.union(ilc_codes_to_bypass)
+        codes_to_bypass = self._error_codes_bypass.union(ILC_READ_WARNING_ERROR_CODES)
 
         (
             enabled_faults_mask,

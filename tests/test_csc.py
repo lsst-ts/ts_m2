@@ -987,7 +987,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Enter the Enabled state to check the mask
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
-            self._assert_enabled_faults_mask(0xFF000003FFFFFFFC)
+            self._assert_enabled_faults_mask(0xFF000003FFFFFFF8)
 
     def _assert_enabled_faults_mask(self, expected_mask: int) -> None:
         data = self.remote.evt_enabledFaultsMask.get()

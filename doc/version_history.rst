@@ -6,6 +6,7 @@ v0.12.5
 -------
 
 * Update the version of ts-conda-build to 0.4 in the conda recipe.
+* Use the **ILC_READ_WARNING_ERROR_CODES** from **ts_m2com**.
 
 v0.12.4
 -------
