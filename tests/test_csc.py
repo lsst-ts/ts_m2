@@ -30,6 +30,7 @@ from lsst.ts.m2com import (
     LIMIT_FORCE_AXIAL_CLOSED_LOOP,
     LIMIT_FORCE_TANGENT_CLOSED_LOOP,
     NUM_ACTUATOR,
+    NUM_INNER_LOOP_CONTROLLER,
     NUM_TANGENT_LINK,
     NUM_TEMPERATURE_EXHAUST,
     NUM_TEMPERATURE_INTAKE,
@@ -133,6 +134,12 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             for topic in topics:
                 getattr(self.remote, f"evt_{topic}").flush()
 
+            # This is to keep the backward compatibility of ts_xml v20.3.0 that
+            # does not have the 'disabledILC' event defined in xml.
+            # TODO: Remove this after ts_xml v20.4.0.
+            if hasattr(self.remote, "evt_disabledILC"):
+                self.remote.evt_disabledILC.flush()
+
             # Enter the Disabled state to construct the connection
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
@@ -175,6 +182,19 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 timeout=STD_TIMEOUT,
                 actuators=[6, 16, 26, 74, 76, 78],
             )
+
+            # This is to keep the backward compatibility of ts_xml v20.3.0 that
+            # does not have the 'disabledILC' event defined in xml.
+            # TODO: Remove this after ts_xml v20.4.0.
+            if hasattr(self.remote, "evt_disabledILC"):
+                ilcs = [False] * NUM_INNER_LOOP_CONTROLLER
+                ilcs[5] = True
+
+                await self.assert_next_sample(
+                    self.remote.evt_disabledILC,
+                    timeout=STD_TIMEOUT,
+                    ilcs=ilcs,
+                )
 
             await self.assert_next_sample(
                 self.remote.evt_interlock, timeout=STD_TIMEOUT, state=False
@@ -987,7 +1007,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Enter the Enabled state to check the mask
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
-            self._assert_enabled_faults_mask(0xFF000003FFFFFFFC)
+            self._assert_enabled_faults_mask(0xFF000003FFFFFFF8)
 
     def _assert_enabled_faults_mask(self, expected_mask: int) -> None:
         data = self.remote.evt_enabledFaultsMask.get()
@@ -1100,7 +1120,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 actuator=actuator, displacement=displacement
             )
 
-            await asyncio.sleep(SLEEP_TIME_SHORT)
+            await asyncio.sleep(SLEEP_TIME_MEDIUM)
             position_after = self._get_axial_actuator_position(actuator)
 
             self.assertGreater((position_after - position_before), 40)
@@ -1110,7 +1130,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             await self.remote.cmd_moveActuator.set_start(actuator=actuator, step=step)
 
-            await asyncio.sleep(SLEEP_TIME_SHORT)
+            await asyncio.sleep(SLEEP_TIME_MEDIUM)
             step_after = self._get_axial_actuator_step(actuator)
 
             self.assertEqual((step_after - step_before), step)
@@ -1162,27 +1182,18 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
             # Check the events
-
-            # This is to keep the backward compatibility of ts_xml v20.0.0 that
-            # does not have the 'actuatorBumpTestStatus' event defined in xml.
-            # TODO: Remove this after ts_xml v20.1.0.
-            if hasattr(self.remote, "evt_actuatorBumpTestStatus"):
-                await self.assert_next_sample(
-                    self.remote.evt_actuatorBumpTestStatus,
-                    timeout=STD_TIMEOUT,
-                    actuator=1,
-                    status=MTM2.BumpTest.TESTINGPOSITIVE,
-                )
+            await self.assert_next_sample(
+                self.remote.evt_actuatorBumpTestStatus,
+                timeout=STD_TIMEOUT,
+                actuator=1,
+                status=MTM2.BumpTest.TESTINGPOSITIVE,
+            )
 
             await asyncio.sleep(6 * period)
 
-            # This is to keep the backward compatibility of ts_xml v20.0.0 that
-            # does not have the 'actuatorBumpTestStatus' event defined in xml.
-            # TODO: Remove this after ts_xml v20.1.0.
-            if hasattr(self.remote, "evt_actuatorBumpTestStatus"):
-                data_status = self.remote.evt_actuatorBumpTestStatus.get()
-                self.assertEqual(data_status.actuator, 1)
-                self.assertEqual(data_status.status, MTM2.BumpTest.PASSED)
+            data_status = self.remote.evt_actuatorBumpTestStatus.get()
+            self.assertEqual(data_status.actuator, 1)
+            self.assertEqual(data_status.status, MTM2.BumpTest.PASSED)
 
             # Tangent link
             await self.remote.cmd_actuatorBumpTest.set_start(
@@ -1192,14 +1203,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(6 * period)
 
             # Check the event
-
-            # This is to keep the backward compatibility of ts_xml v20.0.0 that
-            # does not have the 'actuatorBumpTestStatus' event defined in xml.
-            # TODO: Remove this after ts_xml v20.1.0.
-            if hasattr(self.remote, "evt_actuatorBumpTestStatus"):
-                data_status = self.remote.evt_actuatorBumpTestStatus.get()
-                self.assertEqual(data_status.actuator, 73)
-                self.assertEqual(data_status.status, MTM2.BumpTest.PASSED)
+            data_status = self.remote.evt_actuatorBumpTestStatus.get()
+            self.assertEqual(data_status.actuator, 73)
+            self.assertEqual(data_status.status, MTM2.BumpTest.PASSED)
 
     async def test_actuatorBumpTest_running_error(self) -> None:
         async with self.make_csc(
@@ -1230,53 +1236,45 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
-            # This is to keep the backward compatibility of ts_xml v20.0.0 that
-            # does not have the 'actuatorBumpTestStatus' event defined in xml.
-            # TODO: Remove this after ts_xml v20.1.0.
-            if hasattr(self.remote, "cmd_killActuatorBumpTest"):
-                await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
-                await self.remote.cmd_actuatorBumpTest.set_start(
-                    actuator=1, force=5.26, period=6.0
-                )
+            await self.remote.cmd_actuatorBumpTest.set_start(
+                actuator=1, force=5.26, period=6.0
+            )
 
-                await asyncio.sleep(1.0)
-                self.assertFalse(self.csc._is_bump_test_done())
+            await asyncio.sleep(1.0)
+            self.assertFalse(self.csc._is_bump_test_done())
 
-                await self.remote.cmd_killActuatorBumpTest.set_start()
+            await self.remote.cmd_killActuatorBumpTest.set_start()
 
-                await asyncio.sleep(1.0)
-                data_status = self.remote.evt_actuatorBumpTestStatus.get()
-                self.assertEqual(data_status.status, MTM2.BumpTest.FAILED)
+            await asyncio.sleep(1.0)
+            data_status = self.remote.evt_actuatorBumpTestStatus.get()
+            self.assertEqual(data_status.status, MTM2.BumpTest.FAILED)
 
-                self.assertTrue(self.csc._is_bump_test_done())
+            self.assertTrue(self.csc._is_bump_test_done())
 
     async def test_setHardpointList(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
-            # This is to keep the backward compatibility of ts_xml v20.0.0 that
-            # does not have the 'setHardpointList' event defined in xml.
-            # TODO: Remove this after ts_xml v21.0.0.
-            if hasattr(self.remote, "cmd_setHardpointList"):
-                await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
+            await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
 
-                # Bad hardpoints
-                with self.assertRaises(salobj.AckError):
-                    await self.remote.cmd_setHardpointList.set_start(
-                        actuators=[5, 6, 7, 73, 75, 77]
-                    )
-
-                # Good hardpoints
-                self.remote.evt_hardpointList.flush()
+            # Bad hardpoints
+            with self.assertRaises(salobj.AckError):
                 await self.remote.cmd_setHardpointList.set_start(
-                    actuators=[3, 13, 23, 73, 75, 77]
+                    actuators=[5, 6, 7, 73, 75, 77]
                 )
 
-                data_hardpoints = await self.remote.evt_hardpointList.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
-                self.assertEqual(data_hardpoints.actuators, [4, 14, 24, 74, 76, 78])
+            # Good hardpoints
+            self.remote.evt_hardpointList.flush()
+            await self.remote.cmd_setHardpointList.set_start(
+                actuators=[3, 13, 23, 73, 75, 77]
+            )
+
+            data_hardpoints = await self.remote.evt_hardpointList.next(
+                flush=False, timeout=STD_TIMEOUT
+            )
+            self.assertEqual(data_hardpoints.actuators, [4, 14, 24, 74, 76, 78])
 
     async def test_check_limit_switch(self) -> None:
         async with self.make_csc(
