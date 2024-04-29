@@ -853,7 +853,7 @@ class M2(salobj.ConfigurableCsc):
             MTM2.ClosedLoopControlMode.Idle,
         )
 
-        # The load of configuration file will shut down the communication and
+        # Loading of configuration file will shut down the communication and
         # motor power. Since the motor power can not be on if the communication
         # power is off, we check the communication power here only. If the
         # power is on already, do not load the configuration.
