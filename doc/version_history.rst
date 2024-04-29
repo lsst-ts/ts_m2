@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.12.6
+-------
+
+* Check the current power status in ``M2.do_enable()``, ``M2.do_setHardpointList()``, and ``M2.do_setConfigurationFile()``.
+
 v0.12.5
 -------
 

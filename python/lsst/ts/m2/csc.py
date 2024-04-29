@@ -833,15 +833,16 @@ class M2(salobj.ConfigurableCsc):
 
         # TODO: Check with electrical engineer that I need to reset the cRIO
         # interlock or not in a latter time.
-        self.log.info(
-            "Reset the motor and communication power breakers and cRIO interlock bits."
-        )
-        for idx in range(2, 5):
-            await self._execute_command(
-                self.controller_cell.set_bit_digital_status,
-                idx,
-                DigitalOutputStatus.BinaryHighLevel,
+        if not self.controller_cell.is_powered_on_communication():
+            self.log.info(
+                "Reset the motor and communication power breakers and cRIO interlock bits."
             )
+            for idx in range(2, 5):
+                await self._execute_command(
+                    self.controller_cell.set_bit_digital_status,
+                    idx,
+                    DigitalOutputStatus.BinaryHighLevel,
+                )
 
         # I don't understand why I need to put the CLC mode to be Idle twice.
         # This is translated from the ts_mtm2 and I need this to make the M2
@@ -852,10 +853,15 @@ class M2(salobj.ConfigurableCsc):
             MTM2.ClosedLoopControlMode.Idle,
         )
 
-        self.log.info("Load the configuration.")
-        await self._execute_command(
-            self.controller_cell.load_configuration,
-        )
+        # Loading of configuration file will shut down the communication and
+        # motor power. Since the motor power can not be on if the communication
+        # power is off, we check the communication power here only. If the
+        # power is on already, do not load the configuration.
+        if not self.controller_cell.is_powered_on_communication():
+            self.log.info("Load the configuration.")
+            await self._execute_command(
+                self.controller_cell.load_configuration,
+            )
 
         self.log.info("Set control parameters.")
         await self._execute_command(
@@ -877,28 +883,33 @@ class M2(salobj.ConfigurableCsc):
         )
 
         # Power on the system and enable the ILCs
-        self.log.info("Power-on the communication.")
-        await self._execute_command(
-            self.controller_cell.power,
-            MTM2.PowerType.Communication,
-            True,
-            timeout=self.COMMAND_TIMEOUT_LONG,
-        )
-
-        self.log.info("Power-on the motor.")
-        try:
+        if not self.controller_cell.is_powered_on_communication():
+            self.log.info("Power-on the communication.")
             await self._execute_command(
                 self.controller_cell.power,
-                MTM2.PowerType.Motor,
+                MTM2.PowerType.Communication,
                 True,
                 timeout=self.COMMAND_TIMEOUT_LONG,
             )
 
-        except RuntimeError as error:
-            error.add_note(
-                "Failed to power up motors, please check/reset the interlock or power system."
-            )
-            raise
+        if not self.controller_cell.is_powered_on_motor():
+            self.log.info("Power-on the motor.")
+            try:
+                await self._execute_command(
+                    self.controller_cell.power,
+                    MTM2.PowerType.Motor,
+                    True,
+                    timeout=self.COMMAND_TIMEOUT_LONG,
+                )
+
+            except RuntimeError as error:
+                error.add_note(
+                    (
+                        "Failed to power up motors, please check/reset the "
+                        "interlock or power system."
+                    )
+                )
+                raise
 
         self.log.info("Enable the ILCs.")
         if not self.controller_cell.are_ilc_modes_enabled():
@@ -1394,12 +1405,23 @@ class M2(salobj.ConfigurableCsc):
         Raises
         ------
         `RuntimeError`
+            When the communication power is on.
+        `RuntimeError`
             When no available configuration files.
         `ValueError`
             When the configuration file is not allowed.
         """
 
         self._assert_disabled()
+
+        if self.controller_cell.is_powered_on_communication():
+            raise RuntimeError(
+                (
+                    "You can not set the configuration file while the "
+                    "communication power is on. Transition to the Standby "
+                    "state first to power off everything."
+                )
+            )
 
         await self.cmd_setConfigurationFile.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
@@ -1666,9 +1688,23 @@ class M2(salobj.ConfigurableCsc):
         ----------
         data : `object`
             Data of the SAL message.
+
+        Raises
+        ------
+        `RuntimeError`
+            When the communication power is on.
         """
 
         self._assert_disabled()
+
+        if self.controller_cell.is_powered_on_communication():
+            raise RuntimeError(
+                (
+                    "You can not set the hardpoints while the communication "
+                    "power is on. Transition to the Standby state first to power "
+                    "off everything."
+                )
+            )
 
         # Check the hardpoints
         yaml_file = self.config_dir / "harrisLUT" / "cell_geom.yaml"
