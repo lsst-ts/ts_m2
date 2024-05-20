@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.0
+-------
+
+* Read the following settings from the **ts_config_mttcs**: inclination source, configuration file, and hardpoints.
+
 v0.12.6
 -------
 
