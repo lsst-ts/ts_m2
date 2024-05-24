@@ -860,6 +860,21 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT_LONG_ENABLE
         )
 
+        # If the communication and motor powers are on, we know the GUI is
+        # using the M2 already.
+        if (
+            self.controller_cell.is_powered_on_communication()
+            and self.controller_cell.is_powered_on_motor()
+        ):
+            self.log.info(
+                "The GUI should be controlling the M2 now. Skip the processes "
+                "to avoid to interrupt the actions of GUI."
+            )
+
+            self.system_is_ready = True
+            await super().do_enable(data)
+            return
+
         # Workaround the mypy checking
         assert self.config is not None
 

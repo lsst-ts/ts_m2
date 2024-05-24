@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.1
+-------
+
+* Bypass the actions if the GUI is connecting to the controller.
+
 v0.13.0
 -------
 

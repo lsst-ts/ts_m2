@@ -130,6 +130,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 "closedLoopControlMode",
                 "enabledFaultsMask",
                 "configurationFiles",
+                "powerSystemState",
             ]
             for topic in topics:
                 getattr(self.remote, f"evt_{topic}").flush()
@@ -248,6 +249,22 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 flush=False, timeout=STD_TIMEOUT
             )
             self.assertNotEqual(data_configuration_files.files, "")
+
+            await self.assert_next_sample(
+                self.remote.evt_powerSystemState,
+                timeout=STD_TIMEOUT,
+                powerType=MTM2.PowerType.Communication,
+                status=False,
+                state=MTM2.PowerSystemState.Init,
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_powerSystemState,
+                timeout=STD_TIMEOUT,
+                powerType=MTM2.PowerType.Motor,
+                status=False,
+                state=MTM2.PowerSystemState.Init,
+            )
 
             # Check the telemetry in OFFLINE state
             data_power_status = await self.remote.tel_powerStatus.next(
