@@ -122,7 +122,6 @@ class M2(salobj.ConfigurableCsc):
         simulation_mode: int = 0,
         verbose: bool = False,
     ) -> None:
-
         super().__init__(
             "MTM2",
             index=0,
@@ -700,6 +699,22 @@ class M2(salobj.ConfigurableCsc):
     async def do_start(self, data: salobj.BaseMsgType) -> None:
         await super().do_start(data)
 
+        # Workaround of the mypy checking
+        assert self.config is not None
+
+        # Select the inclination telemetry source
+        try:
+            self._select_inclination_source(
+                MTM2.InclinationTelemetrySource(self.config.inclination_source),
+                self.config.inclination_max_difference,
+                self.config.inclination_enable_comparison,
+            )
+        except Exception:
+            self.log.info(
+                "Failed to set the inclination source from the configuration. Skip it."
+            )
+
+        # Connect the M2 controller
         await self._connect_server(self.COMMAND_TIMEOUT)
 
         # Wait for some time to process the welcome messages
@@ -711,6 +726,37 @@ class M2(salobj.ConfigurableCsc):
 
         # Sleep for some time to process the messages
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
+
+    def _select_inclination_source(
+        self,
+        source: MTM2.InclinationTelemetrySource,
+        max_difference: float,
+        enable_comparison: bool,
+    ) -> None:
+        """Select the inclination source. This will affect the angle used to
+        do the look-up table (LUT) calculation.
+
+        Parameters
+        ----------
+        source : enum `MTM2.InclinationTelemetrySource`
+            Inclination source.
+        max_difference : `float`
+            Maximum angle difference between the onboard and MTMount angles.
+            Put 0.0 if using the default value.
+        enable_comparison : `bool`
+            Enable the comparison or not between the onboard and MTMount
+            angles. If the source is MTMount, this value should be True.
+        """
+
+        use_mtmount = source == MTM2.InclinationTelemetrySource.MTMOUNT
+        max_angle_difference = None if (max_difference == 0.0) else max_difference
+        enable_angle_comparison = True if use_mtmount else enable_comparison
+
+        self.controller_cell.select_inclination_source(
+            use_external_elevation_angle=use_mtmount,
+            max_angle_difference=max_angle_difference,
+            enable_angle_comparison=enable_angle_comparison,
+        )
 
     def _exists_error_in_controller(self) -> bool:
         """Exists the error in the controller or not.
@@ -814,6 +860,41 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT_LONG_ENABLE
         )
 
+        # Workaround the mypy checking
+        assert self.config is not None
+
+        if not self.controller_cell.is_powered_on_communication():
+            # Set the configuration file
+            configuration_file = self.config.configuration_file
+            if self.evt_config.has_data and (
+                self.evt_config.data.configuration != configuration_file
+            ):
+                self.log.info(f"Set the configuration file: {configuration_file}.")
+                try:
+                    await self._set_configuration_file(configuration_file)
+                except Exception:
+                    self.log.info(
+                        "Failed to set the configuration file from the configuration. Skip it."
+                    )
+
+            # Set the hardpoints
+            hardpoints = self.config.hardpoints.copy()
+            hardpoints.sort()
+            hardpoints_1_based = [(hardpoint + 1) for hardpoint in hardpoints]
+
+            # The received hardpoints are 1-based
+            if self.evt_hardpointList.has_data and (
+                self.evt_hardpointList.data.actuators != hardpoints_1_based
+            ):
+                self.log.info(f"Set the hardpoints (0-based): {hardpoints}.")
+                try:
+                    await self._set_hardpoint_list(hardpoints)
+                except Exception:
+                    self.log.info(
+                        "Failed to set the hardpoints from the configuration. Skip it."
+                    )
+
+        # Bypass the error code
         self.log.info("Bypass the error codes.")
         await self._bypass_error_codes()
 
@@ -963,6 +1044,98 @@ class M2(salobj.ConfigurableCsc):
         self.system_is_ready = True
 
         await super().do_enable(data)
+
+    async def _set_configuration_file(self, file: str) -> None:
+        """Set the system configuration file.
+
+        Parameters
+        ----------
+        file : `str`
+            System configuration file.
+
+        Raises
+        ------
+        `RuntimeError`
+            When the communication power is on.
+        `RuntimeError`
+            When no available configuration files.
+        `ValueError`
+            When the configuration file is not allowed.
+        """
+
+        if self.controller_cell.is_powered_on_communication():
+            raise RuntimeError(
+                (
+                    "You can not set the configuration file while the "
+                    "communication power is on. Transition to the Standby "
+                    "state first to power off everything."
+                )
+            )
+
+        # Get the current available files in controller
+        configuration_files = list()
+        error_no_file = "No available configuration files."
+        if self.evt_configurationFiles.has_data:
+            configuration_files = self.evt_configurationFiles.data.files.split(",")
+        else:
+            raise RuntimeError(error_no_file)
+
+        if len(configuration_files) <= 1:
+            raise RuntimeError(error_no_file)
+
+        # Check the file is available or not
+        if file not in configuration_files:
+            raise ValueError(
+                f"Only the following files are allowed: {configuration_files}."
+            )
+
+        await self._execute_command(
+            self.controller_cell.set_configuration_file,
+            file,
+        )
+
+    async def _set_hardpoint_list(self, hardpoint_list: list[int]) -> None:
+        """Set the hardpoint inst.
+
+        Parameters
+        ----------
+        hardpoint_list : `list` [`int`]
+            List of the 0-based hardpoints. There are 6 actuators. The first
+            three are the axial actuators and the latter three are the tangent
+            links.
+
+        Raises
+        ------
+        `RuntimeError`
+            When the communication power is on.
+        """
+
+        if self.controller_cell.is_powered_on_communication():
+            raise RuntimeError(
+                (
+                    "You can not set the hardpoints while the communication "
+                    "power is on. Transition to the Standby state first to power "
+                    "off everything."
+                )
+            )
+
+        # Check the hardpoints
+        yaml_file = self.config_dir / "harrisLUT" / "cell_geom.yaml"
+        cell_geom = read_yaml_file(yaml_file)
+
+        hardpoints = hardpoint_list.copy()
+        hardpoints.sort()
+
+        check_hardpoints(
+            cell_geom["locAct_axial"],
+            hardpoints[:NUM_HARDPOINTS_AXIAL],
+            hardpoints[NUM_HARDPOINTS_AXIAL:],
+        )
+
+        await self._execute_command(
+            self.controller_cell.set_hardpoint_list,
+            hardpoints,
+        )
 
     async def _bypass_error_codes(self) -> None:
         """Bypass the error codes related to the monitoring inner-loop
@@ -1273,19 +1446,10 @@ class M2(salobj.ConfigurableCsc):
             data, timeout=self.COMMAND_TIMEOUT
         )
 
-        source = MTM2.InclinationTelemetrySource(data.source)
-        use_mtmount = source == MTM2.InclinationTelemetrySource.MTMOUNT
-
-        max_angle_difference = (
-            None if (data.maxDifference == 0.0) else data.maxDifference
-        )
-
-        enable_angle_comparison = True if use_mtmount else data.enableComparison
-
-        self.controller_cell.select_inclination_source(
-            use_external_elevation_angle=use_mtmount,
-            max_angle_difference=max_angle_difference,
-            enable_angle_comparison=enable_angle_comparison,
+        self._select_inclination_source(
+            MTM2.InclinationTelemetrySource(data.source),
+            data.maxDifference,
+            data.enableComparison,
         )
 
         await self._execute_command(self.controller_cell.set_control_parameters)
@@ -1414,41 +1578,11 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_disabled()
 
-        if self.controller_cell.is_powered_on_communication():
-            raise RuntimeError(
-                (
-                    "You can not set the configuration file while the "
-                    "communication power is on. Transition to the Standby "
-                    "state first to power off everything."
-                )
-            )
-
         await self.cmd_setConfigurationFile.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
-        # Get the current available files in controller
-        configuration_files = list()
-        error_no_file = "No available configuration files."
-        if self.evt_configurationFiles.has_data:
-            configuration_files = self.evt_configurationFiles.data.files.split(",")
-        else:
-            raise RuntimeError(error_no_file)
-
-        if len(configuration_files) <= 1:
-            raise RuntimeError(error_no_file)
-
-        # Check the file is available or not
-        configuration_file = data.file
-        if configuration_file not in configuration_files:
-            raise ValueError(
-                f"Only the following files are allowed: {configuration_files}."
-            )
-
-        await self._execute_command(
-            self.controller_cell.set_configuration_file,
-            configuration_file,
-        )
+        await self._set_configuration_file(data.file)
 
     async def do_enableOpenLoopMaxLimit(self, data: salobj.BaseMsgType) -> None:
         """Enable the maximum force limit in open-loop control.
@@ -1688,45 +1822,15 @@ class M2(salobj.ConfigurableCsc):
         ----------
         data : `object`
             Data of the SAL message.
-
-        Raises
-        ------
-        `RuntimeError`
-            When the communication power is on.
         """
 
         self._assert_disabled()
-
-        if self.controller_cell.is_powered_on_communication():
-            raise RuntimeError(
-                (
-                    "You can not set the hardpoints while the communication "
-                    "power is on. Transition to the Standby state first to power "
-                    "off everything."
-                )
-            )
-
-        # Check the hardpoints
-        yaml_file = self.config_dir / "harrisLUT" / "cell_geom.yaml"
-        cell_geom = read_yaml_file(yaml_file)
-
-        hardpoints = data.actuators
-        hardpoints.sort()
-
-        check_hardpoints(
-            cell_geom["locAct_axial"],
-            hardpoints[:NUM_HARDPOINTS_AXIAL],
-            hardpoints[NUM_HARDPOINTS_AXIAL:],
-        )
 
         await self.cmd_setHardpointList.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT
         )
 
-        await self._execute_command(
-            self.controller_cell.set_hardpoint_list,
-            hardpoints,
-        )
+        await self._set_hardpoint_list(data.actuators)
 
     async def _execute_command(
         self,
