@@ -180,6 +180,10 @@ class M2(salobj.ConfigurableCsc):
         # Task of the bump test
         self._task_bump_test = make_done_future()
 
+        # Overwritten settings
+        self._is_overwritten_hardpoints = False
+        self._is_overwritten_configuration_file = False
+
     async def set_mount_elevation_callback(self, data: salobj.BaseMsgType) -> None:
         """Callback function to set the mount elevation.
 
@@ -853,6 +857,9 @@ class M2(salobj.ConfigurableCsc):
         # Clear the internal data
         self._error_codes_bypass.clear()
 
+        self._is_overwritten_hardpoints = False
+        self._is_overwritten_configuration_file = False
+
         await super().do_standby(data)
 
     async def do_enable(self, data: salobj.BaseMsgType) -> None:
@@ -881,8 +888,10 @@ class M2(salobj.ConfigurableCsc):
         if not self.controller_cell.is_powered_on_communication():
             # Set the configuration file
             configuration_file = self.config.configuration_file
-            if self.evt_config.has_data and (
-                self.evt_config.data.configuration != configuration_file
+            if (
+                (not self._is_overwritten_configuration_file)
+                and self.evt_config.has_data
+                and (self.evt_config.data.configuration != configuration_file)
             ):
                 self.log.info(f"Set the configuration file: {configuration_file}.")
                 try:
@@ -898,8 +907,10 @@ class M2(salobj.ConfigurableCsc):
             hardpoints_1_based = [(hardpoint + 1) for hardpoint in hardpoints]
 
             # The received hardpoints are 1-based
-            if self.evt_hardpointList.has_data and (
-                self.evt_hardpointList.data.actuators != hardpoints_1_based
+            if (
+                (not self._is_overwritten_hardpoints)
+                and self.evt_hardpointList.has_data
+                and (self.evt_hardpointList.data.actuators != hardpoints_1_based)
             ):
                 self.log.info(f"Set the hardpoints (0-based): {hardpoints}.")
                 try:
@@ -1599,6 +1610,8 @@ class M2(salobj.ConfigurableCsc):
 
         await self._set_configuration_file(data.file)
 
+        self._is_overwritten_configuration_file = True
+
     async def do_enableOpenLoopMaxLimit(self, data: salobj.BaseMsgType) -> None:
         """Enable the maximum force limit in open-loop control.
 
@@ -1846,6 +1859,8 @@ class M2(salobj.ConfigurableCsc):
         )
 
         await self._set_hardpoint_list(data.actuators)
+
+        self._is_overwritten_hardpoints = True
 
     async def _execute_command(
         self,

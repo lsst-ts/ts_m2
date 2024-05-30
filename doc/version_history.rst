@@ -6,6 +6,7 @@ v0.13.1
 -------
 
 * Bypass the actions if the GUI is connecting to the controller.
+* Fix the bug of setting the hardpoints and configuration file. 
 
 v0.13.0
 -------

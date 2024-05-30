@@ -314,11 +314,19 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
 
+            # Overwrite some internal data
+            self.csc._is_overwritten_hardpoints = True
+            self.csc._is_overwritten_configuration_file = True
+
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
             self.assertFalse(
                 self.csc.controller_cell.mock_server.are_servers_connected()
             )
+
+            # The internal data should be reset
+            self.assertFalse(self.csc._is_overwritten_hardpoints)
+            self.assertFalse(self.csc._is_overwritten_configuration_file)
 
             # Check the summary state
             self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
@@ -398,6 +406,10 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 actuators=[3, 13, 23, 73, 75, 77]
             )
             await asyncio.sleep(SLEEP_TIME_SHORT)
+
+            # Put the overwritten to False to let the setting in configuration
+            # file can be used.
+            self.csc._is_overwritten_hardpoints = False
 
             # Flush the topics
             for topic in ("config", "hardpointList"):
@@ -1108,11 +1120,13 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # This should fail for the wrong file
             with self.assertRaises(salobj.AckError):
                 await self.remote.cmd_setConfigurationFile.set_start(file="abc")
+            self.assertFalse(self.csc._is_overwritten_configuration_file)
 
             # Set the correct configuraion file
             await self.remote.cmd_setConfigurationFile.set_start(
                 file=configuration_file
             )
+            self.assertTrue(self.csc._is_overwritten_configuration_file)
 
             # Check the related event
             await asyncio.sleep(SLEEP_TIME_SHORT)
@@ -1320,12 +1334,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 await self.remote.cmd_setHardpointList.set_start(
                     actuators=[5, 6, 7, 73, 75, 77]
                 )
+            self.assertFalse(self.csc._is_overwritten_hardpoints)
 
             # Good hardpoints
             self.remote.evt_hardpointList.flush()
             await self.remote.cmd_setHardpointList.set_start(
                 actuators=[3, 13, 23, 73, 75, 77]
             )
+            self.assertTrue(self.csc._is_overwritten_hardpoints)
 
             data_hardpoints = await self.remote.evt_hardpointList.next(
                 flush=False, timeout=STD_TIMEOUT
