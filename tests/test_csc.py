@@ -130,6 +130,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 "closedLoopControlMode",
                 "enabledFaultsMask",
                 "configurationFiles",
+                "powerSystemState",
             ]
             for topic in topics:
                 getattr(self.remote, f"evt_{topic}").flush()
@@ -249,6 +250,22 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
             self.assertNotEqual(data_configuration_files.files, "")
 
+            await self.assert_next_sample(
+                self.remote.evt_powerSystemState,
+                timeout=STD_TIMEOUT,
+                powerType=MTM2.PowerType.Communication,
+                status=False,
+                state=MTM2.PowerSystemState.Init,
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_powerSystemState,
+                timeout=STD_TIMEOUT,
+                powerType=MTM2.PowerType.Motor,
+                status=False,
+                state=MTM2.PowerSystemState.Init,
+            )
+
             # Check the telemetry in OFFLINE state
             data_power_status = await self.remote.tel_powerStatus.next(
                 flush=False, timeout=STD_TIMEOUT
@@ -272,6 +289,23 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(data_disp_sensors.thetaZ, [0] * 6)
             self.assertNotEqual(data_disp_sensors.deltaZ, [0] * 6)
 
+    async def test_select_inclination_source(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            control_parameters = self.csc.controller_cell.control_parameters
+            control_parameters["use_external_elevation_angle"] = True
+            control_parameters["enable_angle_comparison"] = True
+            control_parameters["max_angle_difference"] = 3.0
+
+            self.csc._select_inclination_source(
+                MTM2.InclinationTelemetrySource.ONBOARD, 2.0, False
+            )
+
+            self.assertFalse(control_parameters["use_external_elevation_angle"])
+            self.assertFalse(control_parameters["enable_angle_comparison"])
+            self.assertEqual(control_parameters["max_angle_difference"], 2.0)
+
     async def test_standby_no_fault(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
@@ -280,11 +314,19 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
 
+            # Overwrite some internal data
+            self.csc._is_overwritten_hardpoints = True
+            self.csc._is_overwritten_configuration_file = True
+
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
             self.assertFalse(
                 self.csc.controller_cell.mock_server.are_servers_connected()
             )
+
+            # The internal data should be reset
+            self.assertFalse(self.csc._is_overwritten_hardpoints)
+            self.assertFalse(self.csc._is_overwritten_configuration_file)
 
             # Check the summary state
             self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
@@ -359,8 +401,34 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Enter the Disabled state to construct the connection
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
+            # Change the hardpoints
+            await self.remote.cmd_setHardpointList.set_start(
+                actuators=[3, 13, 23, 73, 75, 77]
+            )
+            await asyncio.sleep(SLEEP_TIME_SHORT)
+
+            # Put the overwritten to False to let the setting in configuration
+            # file can be used.
+            self.csc._is_overwritten_hardpoints = False
+
+            # Flush the topics
+            for topic in ("config", "hardpointList"):
+                getattr(self.remote, f"evt_{topic}").flush()
+
             # Go to the Enabled state
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
+
+            await self.assert_next_sample(
+                self.remote.evt_config,
+                timeout=STD_TIMEOUT,
+                configuration="Configurable_File_Description_20180831T092423_surrogate_optical.csv",
+            )
+
+            await self.assert_next_sample(
+                self.remote.evt_hardpointList,
+                timeout=STD_TIMEOUT,
+                actuators=[6, 16, 26, 74, 76, 78],
+            )
 
             # Check all ILCs are enabled and the system is under the
             # closed-loop control
@@ -517,7 +585,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check the last sequence ID
             self.assertEqual(
-                self.csc.controller_cell.client_command.last_sequence_id, 20
+                self.csc.controller_cell.client_command.last_sequence_id, 21
             )
 
             # Enter the Standby state to close the connection
@@ -537,10 +605,10 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 self.csc.controller_cell.mock_server.are_servers_connected()
             )
 
-            # Check the last sequence ID. Note the value should be 47 instead
-            # of 20 from the previous connection.
+            # Check the last sequence ID. Note the value should be 49 instead
+            # of 21 from the previous connection.
             self.assertEqual(
-                self.csc.controller_cell.client_command.last_sequence_id, 47
+                self.csc.controller_cell.client_command.last_sequence_id, 49
             )
 
     async def test_telemetry_loop(self) -> None:
@@ -1052,11 +1120,13 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # This should fail for the wrong file
             with self.assertRaises(salobj.AckError):
                 await self.remote.cmd_setConfigurationFile.set_start(file="abc")
+            self.assertFalse(self.csc._is_overwritten_configuration_file)
 
             # Set the correct configuraion file
             await self.remote.cmd_setConfigurationFile.set_start(
                 file=configuration_file
             )
+            self.assertTrue(self.csc._is_overwritten_configuration_file)
 
             # Check the related event
             await asyncio.sleep(SLEEP_TIME_SHORT)
@@ -1264,12 +1334,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 await self.remote.cmd_setHardpointList.set_start(
                     actuators=[5, 6, 7, 73, 75, 77]
                 )
+            self.assertFalse(self.csc._is_overwritten_hardpoints)
 
             # Good hardpoints
             self.remote.evt_hardpointList.flush()
             await self.remote.cmd_setHardpointList.set_start(
                 actuators=[3, 13, 23, 73, 75, 77]
             )
+            self.assertTrue(self.csc._is_overwritten_hardpoints)
 
             data_hardpoints = await self.remote.evt_hardpointList.next(
                 flush=False, timeout=STD_TIMEOUT
