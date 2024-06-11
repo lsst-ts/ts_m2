@@ -721,12 +721,15 @@ class M2(salobj.ConfigurableCsc):
         # Connect the M2 controller
         await self._connect_server(self.COMMAND_TIMEOUT)
 
-        # Wait for some time to process the welcome messages
-        await asyncio.sleep(self.SLEEP_TIME_SHORT)
+        # Wait for some time to process the welcome messages and telemetry
+        await asyncio.sleep(self.SLEEP_TIME_MEDIUM)
 
         # Clear all the existed error if any
         if self._exists_error_in_controller():
-            await self._clear_controller_errors()
+            if self.is_csc_commander():
+                await self._clear_controller_errors()
+            else:
+                self.log.info("The CSC is not the commander. Skip the error clearing.")
 
         # Sleep for some time to process the messages
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
@@ -796,6 +799,19 @@ class M2(salobj.ConfigurableCsc):
 
         await self.controller_cell.connect_server()
 
+    def is_csc_commander(self) -> bool:
+        """The commandable SAL component (CSC) is the commander or not.
+
+        Returns
+        -------
+        `bool`
+            True if the CSC is the commander. Otherwise, False.
+        """
+
+        return self.evt_commandableByDDS.has_data and (
+            self.evt_commandableByDDS.data.state is True
+        )
+
     async def begin_standby(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
@@ -808,7 +824,7 @@ class M2(salobj.ConfigurableCsc):
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
 
         # Try to clear the error if any
-        if self._exists_error_in_controller():
+        if self._exists_error_in_controller() and self.is_csc_commander():
             try:
                 await self._clear_controller_errors()
 
@@ -818,7 +834,7 @@ class M2(salobj.ConfigurableCsc):
                 )
 
         # Cleaning up
-        if self.controller_cell.are_clients_connected():
+        if self.controller_cell.are_clients_connected() and self.is_csc_commander():
             # We need to check the closed-loop control mode and motor power
             # status if the interlock was triggered.
             if (
@@ -877,6 +893,28 @@ class M2(salobj.ConfigurableCsc):
                 "The GUI should be controlling the M2 now. Skip the processes "
                 "to avoid to interrupt the actions of GUI."
             )
+
+            # Assume all actuator ILCs are enabled
+            self.controller_cell.ilc_modes = np.array(
+                [MTM2.InnerLoopControlMode.Enabled] * NUM_INNER_LOOP_CONTROLLER
+            )
+
+            # Transition to the closed-loop control if possible
+            if (
+                self.controller_cell.closed_loop_control_mode
+                != MTM2.ClosedLoopControlMode.ClosedLoop
+            ):
+                if self.is_csc_commander():
+                    self.log.info("Switch on the force balance system.")
+                    await self._switch_force_balance_system(True)
+
+                    # Wait for some time to stabilize the system
+                    await asyncio.sleep(self.SLEEP_TIME_MEDIUM)
+                else:
+                    self.log.info(
+                        "The CSC is not the commander. The current control "
+                        f"mode is {self.controller_cell.closed_loop_control_mode!r}."
+                    )
 
             self.system_is_ready = True
             await super().do_enable(data)
@@ -1251,8 +1289,9 @@ class M2(salobj.ConfigurableCsc):
         self.system_is_ready = False
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
 
-        await self._switch_force_balance_system(False)
-        await self._basic_cleanup_and_power_off_motor()
+        if self.is_csc_commander():
+            await self._switch_force_balance_system(False)
+            await self._basic_cleanup_and_power_off_motor()
 
         await super().do_disable(data)
 
@@ -1886,7 +1925,18 @@ class M2(salobj.ConfigurableCsc):
             (the default is None)
         **kwargs : `dict`, optional
             Additional keyword arguments to run the command.
+
+        Raises
+        ------
+        `RuntimeError`
+            When the CSC is not the commander.
         """
+
+        if not self.is_csc_commander():
+            raise RuntimeError(
+                "The CSC needs to be the commander to execute the command. "
+                "Please use the GUI to do the switchness."
+            )
 
         timeout = self.COMMAND_TIMEOUT if (timeout is None) else timeout
 
