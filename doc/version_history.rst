@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.3
+-------
+
+* Add the ``M2._is_inclinometer_out_of_tma_range`` attribute and log the message when the M2 is out of the normal elevation range.
+
 v0.13.2
 -------
 

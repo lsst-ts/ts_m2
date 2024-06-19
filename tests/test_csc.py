@@ -1429,6 +1429,20 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             data_limit_switch_extend = self.remote.evt_limitSwitchExtend.get()
             self.assertEqual(data_limit_switch_extend.actuatorId, 2)
 
+    async def test_check_is_inclinometer_out_of_tma_range(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            self.csc._is_inclinometer_out_of_tma_range = True
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+
+            self.assertFalse(self.csc._is_inclinometer_out_of_tma_range)
+
+            self.csc.controller_cell.mock_server.model.set_inclinometer_angle(89.0)
+            await asyncio.sleep(SLEEP_TIME_MEDIUM)
+
+            self.assertTrue(self.csc._is_inclinometer_out_of_tma_range)
+
 
 if __name__ == "__main__":
     unittest.main()
