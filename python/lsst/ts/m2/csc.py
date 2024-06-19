@@ -184,6 +184,13 @@ class M2(salobj.ConfigurableCsc):
         self._is_overwritten_hardpoints = False
         self._is_overwritten_configuration_file = False
 
+        # Sometimes, the processed inclinometer angle might be -269.xx degree
+        # on TMA while the TMA elevation angle is around 89.xx. This is because
+        # there is some offset between them. This attribute is used to capture
+        # this and warn the users. It is noted that the M2 is allowed to have
+        # 360 degree rotation when it is on the cart.
+        self._is_inclinometer_out_of_tma_range = False
+
     async def set_mount_elevation_callback(self, data: salobj.BaseMsgType) -> None:
         """Callback function to set the mount elevation.
 
@@ -585,6 +592,25 @@ class M2(salobj.ConfigurableCsc):
                     inclinometerProcessed=message["inclinometerProcessed"],
                 )
 
+                # The normal elevation angle range is 0 to 90 degree on TMA.
+                is_inclinometer_in_range = (
+                    0.0 <= message["inclinometerProcessed"] <= 90.0
+                )
+
+                if self._is_inclinometer_out_of_tma_range and is_inclinometer_in_range:
+                    self.log.info(
+                        "M2's processed inclinometer is back to the TMA range."
+                    )
+                    self._is_inclinometer_out_of_tma_range = False
+
+                if (not self._is_inclinometer_out_of_tma_range) and (
+                    not is_inclinometer_in_range
+                ):
+                    self.log.info(
+                        "M2's processed inclinometer is out of the TMA range."
+                    )
+                    self._is_inclinometer_out_of_tma_range = True
+
             case "inclinometerAngleTma":
                 await self.tel_inclinometerAngleTma.set_write(
                     inclinometer=message["inclinometer"],
@@ -875,6 +901,8 @@ class M2(salobj.ConfigurableCsc):
 
         self._is_overwritten_hardpoints = False
         self._is_overwritten_configuration_file = False
+
+        self._is_inclinometer_out_of_tma_range = False
 
         await super().do_standby(data)
 
