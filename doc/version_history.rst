@@ -2,11 +2,22 @@
 Version History
 ===============
 
+v0.13.3
+-------
+
+* Add the ``M2._is_inclinometer_out_of_tma_range`` attribute and log the message when the M2 is out of the normal elevation range.
+
+v0.13.2
+-------
+
+* Add the ``M2.is_csc_commander()``.
+* Remove the ``Translator._handle_commandable_by_dds()``.
+
 v0.13.1
 -------
 
 * Bypass the actions if the GUI is connecting to the controller.
-* Fix the bug of setting the hardpoints and configuration file. 
+* Fix the bug of setting the hardpoints and configuration file.
 
 v0.13.0
 -------

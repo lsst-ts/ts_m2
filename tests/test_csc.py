@@ -112,6 +112,24 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(self.csc.controller_cell.mock_server)
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
 
+    async def test_is_gui_commander(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            # Enter the Disabled state to construct the connection
+            await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
+
+            # Change the commander to the GUI
+            await self.csc.controller_cell.mock_server._message_event.write_commandable_by_dds(
+                False
+            )
+            await asyncio.sleep(SLEEP_TIME_SHORT)
+
+            self.assertFalse(self.csc.is_csc_commander())
+
+            with self.assertRaises(salobj.AckError):
+                await self.remote.cmd_clearErrors.set_start(timeout=STD_TIMEOUT)
+
     async def test_start(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
@@ -265,6 +283,8 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 status=False,
                 state=MTM2.PowerSystemState.Init,
             )
+
+            self.assertTrue(self.csc.is_csc_commander())
 
             # Check the telemetry in OFFLINE state
             data_power_status = await self.remote.tel_powerStatus.next(
@@ -452,6 +472,46 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
     def _assert_open_loop_max_limit(self, expected_status: bool) -> None:
         data = self.remote.evt_openLoopMaxLimit.get()
         self.assertEqual(data.status, expected_status)
+
+    async def test_enable_power_on(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            # Enter the Disabled state to construct the connection
+            await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
+
+            # Fake the condition that the M2 GUI powered on the system already
+            mock_server = self.csc.controller_cell.mock_server
+            power_communication = mock_server.model.power_communication
+            power_motor = mock_server.model.power_motor
+
+            powers = [power_communication, power_motor]
+            power_types = [MTM2.PowerType.Communication, MTM2.PowerType.Motor]
+            for power, power_type in zip(powers, power_types):
+                await power.power_on()
+                await power.wait_power_fully_on()
+
+                await mock_server._message_event.write_power_system_state(
+                    power_type,
+                    power.is_power_on(),
+                    power.state,
+                )
+
+            # Sleep a short time to handle the events
+            await asyncio.sleep(SLEEP_TIME_SHORT)
+
+            # Go to the Enabled state
+            await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
+
+            await asyncio.sleep(SLEEP_TIME_SHORT)
+
+            controller_cell = self.csc.controller_cell
+            self.assertTrue(controller_cell.are_ilc_modes_enabled())
+            self.assertEqual(
+                controller_cell.closed_loop_control_mode,
+                MTM2.ClosedLoopControlMode.ClosedLoop,
+            )
+            self.assertTrue(self.csc.system_is_ready)
 
     async def test_enable_interlock(self) -> None:
         async with self.make_csc(
@@ -1368,6 +1428,20 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             data_limit_switch_extend = self.remote.evt_limitSwitchExtend.get()
             self.assertEqual(data_limit_switch_extend.actuatorId, 2)
+
+    async def test_check_is_inclinometer_out_of_tma_range(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            self.csc._is_inclinometer_out_of_tma_range = True
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+
+            self.assertFalse(self.csc._is_inclinometer_out_of_tma_range)
+
+            self.csc.controller_cell.mock_server.model.set_inclinometer_angle(89.0)
+            await asyncio.sleep(SLEEP_TIME_MEDIUM)
+
+            self.assertTrue(self.csc._is_inclinometer_out_of_tma_range)
 
 
 if __name__ == "__main__":
