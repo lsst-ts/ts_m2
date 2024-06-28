@@ -46,6 +46,9 @@ class Translator:
         match message_reformat["id"]:
             case "tangentForce":
                 message_reformat = self._handle_tangent_force(message_reformat)
+            # TODO: Remove this case after DM-45051 is fixed.
+            case "commandableByDDS":
+                message_reformat = self._handle_commandable_by_dds(message_reformat)
             case "config":
                 message_reformat = self._handle_config(message_reformat)
             case "configurationFiles":
@@ -79,6 +82,28 @@ class Translator:
         """
 
         message["lutTemperature"] = [0.0] * 6
+
+        return message
+
+    def _handle_commandable_by_dds(self, message: dict) -> dict:
+        """Handle the message of commandable by data distribution system (DDS).
+
+        TODO: Remove this function after the DM-45051 is fixed. At this moment,
+        we need to connect the CSC to the ports of GUI to establish the
+        TCP/IP connection.
+
+        Parameters
+        ----------
+        message : `dict`
+            Message from the component.
+
+        Returns
+        -------
+        message : `dict`
+            Reformated message.
+        """
+
+        message["state"] = True
 
         return message
 

@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.4
+-------
+
+* Add back the ``Translator._handle_commandable_by_dds()`` before the fix of DM-45051.
+
 v0.13.3
 -------
 
