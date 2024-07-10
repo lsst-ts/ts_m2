@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.5
+-------
+
+* Fix the failed test case for the updated configuration file in **ts_config_mttcs**.
+
 v0.13.4
 -------
 
