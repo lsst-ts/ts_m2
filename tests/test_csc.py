@@ -442,7 +442,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.assert_next_sample(
                 self.remote.evt_config,
                 timeout=STD_TIMEOUT,
-                configuration="Configurable_File_Description_20180831T092423_surrogate_optical.csv",
+                configuration="Configurable_File_Description_20180831T091922_M2_optical.csv",
             )
 
             await self.assert_next_sample(
