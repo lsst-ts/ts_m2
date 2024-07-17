@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.13.6
+-------
+
+* Support the new command to enable/disable the temperature LUT, and use the default value from the configuration file.
+* Remove the workaround code of backward compatibility of **ts_xml** v20.3.0.
+
 v0.13.5
 -------
 
