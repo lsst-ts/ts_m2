@@ -45,6 +45,7 @@ from lsst.ts.m2com import (
 from lsst.ts.m2com import __version__ as __m2com_version__
 from lsst.ts.m2com import check_hardpoints, read_error_code_file, read_yaml_file
 from lsst.ts.utils import make_done_future
+from lsst.ts.xml.component_info import ComponentInfo
 from lsst.ts.xml.enums import MTM2
 
 from . import __version__
@@ -122,6 +123,13 @@ class M2(salobj.ConfigurableCsc):
         simulation_mode: int = 0,
         verbose: bool = False,
     ) -> None:
+        # This is to keep the backward compatibility of ts_xml v22.0.0 that
+        # does not have the 'enableLutTemperature' command defined in xml.
+        # TODO: Remove this after ts_xml v22.1.0.
+        component_info = ComponentInfo("MTM2", "sal")
+        if "cmd_enableLutTemperature" in component_info.topics:
+            setattr(self, "do_enableLutTemperature", self._do_enableLutTemperature)
+
         super().__init__(
             "MTM2",
             index=0,
@@ -382,15 +390,11 @@ class M2(salobj.ConfigurableCsc):
                 )
 
             case "bypassedActuatorILCs":
-                # This is to keep the backward compatibility of ts_xml v20.3.0
-                # that does not have the 'bypassedIlc' event defined in xml.
-                # TODO: Remove this after ts_xml v20.4.0.
-                if hasattr(self, "evt_disabledILC"):
-                    ilcs = [False] * NUM_INNER_LOOP_CONTROLLER
-                    for ilc in message["ilcs"]:
-                        ilcs[ilc - 1] = True
+                ilcs = [False] * NUM_INNER_LOOP_CONTROLLER
+                for ilc in message["ilcs"]:
+                    ilcs[ilc - 1] = True
 
-                    await self.evt_disabledILC.set_write(ilcs=ilcs)
+                await self.evt_disabledILC.set_write(ilcs=ilcs)
 
             case "forceBalanceSystemStatus":
                 await self.evt_forceBalanceSystemStatus.set_write(
@@ -732,8 +736,11 @@ class M2(salobj.ConfigurableCsc):
         # Workaround of the mypy checking
         assert self.config is not None
 
-        # Select the inclination telemetry source
+        # Set the temperature LUT and inclination telemetry source
         try:
+            self.controller_cell.control_parameters["enable_lut_temperature"] = (
+                self.config.enable_lut_temperature
+            )
             self._select_inclination_source(
                 MTM2.InclinationTelemetrySource(self.config.inclination_source),
                 self.config.inclination_max_difference,
@@ -1559,6 +1566,26 @@ class M2(salobj.ConfigurableCsc):
         disabled_state = salobj.State.DISABLED
         if self.summary_state != disabled_state:
             raise RuntimeError(f"Only allowed in the {disabled_state!r}")
+
+    async def _do_enableLutTemperature(self, data: salobj.BaseMsgType) -> None:
+        """Command to enable or disable the temperature look-up table (LUT)
+        correction.
+
+        Parameters
+        ----------
+        data : `object`
+            Data of the SAL message.
+        """
+
+        self._assert_disabled()
+
+        await self.cmd_enableLutTemperature.ack_in_progress(
+            data, timeout=self.COMMAND_TIMEOUT
+        )
+
+        self.controller_cell.control_parameters["enable_lut_temperature"] = data.status
+
+        await self._execute_command(self.controller_cell.set_control_parameters)
 
     async def do_setTemperatureOffset(self, data: salobj.BaseMsgType) -> None:
         """Command to set temperature offset for the LUT temperature
