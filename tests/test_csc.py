@@ -150,15 +150,10 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 "enabledFaultsMask",
                 "configurationFiles",
                 "powerSystemState",
+                "disabledILC",
             ]
             for topic in topics:
                 getattr(self.remote, f"evt_{topic}").flush()
-
-            # This is to keep the backward compatibility of ts_xml v20.3.0 that
-            # does not have the 'disabledILC' event defined in xml.
-            # TODO: Remove this after ts_xml v20.4.0.
-            if hasattr(self.remote, "evt_disabledILC"):
-                self.remote.evt_disabledILC.flush()
 
             # Enter the Disabled state to construct the connection
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
@@ -203,18 +198,13 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 actuators=[6, 16, 26, 74, 76, 78],
             )
 
-            # This is to keep the backward compatibility of ts_xml v20.3.0 that
-            # does not have the 'disabledILC' event defined in xml.
-            # TODO: Remove this after ts_xml v20.4.0.
-            if hasattr(self.remote, "evt_disabledILC"):
-                ilcs = [False] * NUM_INNER_LOOP_CONTROLLER
-                ilcs[5] = True
-
-                await self.assert_next_sample(
-                    self.remote.evt_disabledILC,
-                    timeout=STD_TIMEOUT,
-                    ilcs=ilcs,
-                )
+            ilcs = [False] * NUM_INNER_LOOP_CONTROLLER
+            ilcs[5] = True
+            await self.assert_next_sample(
+                self.remote.evt_disabledILC,
+                timeout=STD_TIMEOUT,
+                ilcs=ilcs,
+            )
 
             await self.assert_next_sample(
                 self.remote.evt_interlock, timeout=STD_TIMEOUT, state=False
@@ -442,7 +432,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.assert_next_sample(
                 self.remote.evt_config,
                 timeout=STD_TIMEOUT,
-                configuration="Configurable_File_Description_20180831T092423_surrogate_optical.csv",
+                configuration="Configurable_File_Description_20180831T091922_M2_optical.csv",
             )
 
             await self.assert_next_sample(
@@ -1022,6 +1012,37 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 elevation,
             )
 
+    async def test_enableLutTemperature(self) -> None:
+        async with self.make_csc(
+            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
+        ):
+            # This is to keep the backward compatibility of ts_xml v22.0.0 that
+            # does not have the 'enableLutTemperature' command defined in xml.
+            # TODO: Remove this after ts_xml v22.1.0.
+            if hasattr(self.remote, "cmd_enableLutTemperature"):
+                await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+
+                # By default, the LUT temperature correction is disabled.
+                self.assertFalse(
+                    self.csc.controller_cell.mock_server.model.control_parameters[
+                        "enable_lut_temperature"
+                    ]
+                )
+
+                # This should fail in the ENABLED state
+                with self.assertRaises(salobj.AckError):
+                    await self.remote.cmd_enableLutTemperature.set_start(status=True)
+
+                # This can only be done in the DISABLED state
+                await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
+                await self.remote.cmd_enableLutTemperature.set_start(status=True)
+
+                self.assertTrue(
+                    self.csc.controller_cell.mock_server.model.control_parameters[
+                        "enable_lut_temperature"
+                    ]
+                )
+
     async def test_switchForceBalanceSystem(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
@@ -1058,10 +1079,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 flush=True, timeout=STD_TIMEOUT
             )
 
-            # LUT gravity and temperature absolute values should be larger
-            # than zero
+            # LUT gravity absolute value should be larger than zero
             self.assertTrue(np.all(np.abs(axial_forces.lutGravity) > 0.0))
-            self.assertTrue(np.all(np.abs(axial_forces.lutTemperature) > 0.0))
+
+            # LUT temperature value should be zero.
+            self.assertEqual(np.sum(np.abs(axial_forces.lutTemperature)), 0.0)
 
     async def test_clearErrors(self) -> None:
         async with self.make_csc(
