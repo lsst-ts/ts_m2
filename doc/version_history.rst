@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.7
+-------
+
+* Fix the failed test case from ts_m2com v1.5.6.
+
 v0.13.6
 -------
 
