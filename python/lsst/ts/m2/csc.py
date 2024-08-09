@@ -728,10 +728,10 @@ class M2(salobj.ConfigurableCsc):
     async def begin_start(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_start.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
+        # The parent class ConfigurableCsc will read the configuration here
         await super().begin_start(data)
 
-    async def do_start(self, data: salobj.BaseMsgType) -> None:
-        await super().do_start(data)
+    async def end_start(self, data: salobj.BaseMsgType) -> None:
 
         # Workaround of the mypy checking
         assert self.config is not None
@@ -848,9 +848,6 @@ class M2(salobj.ConfigurableCsc):
     async def begin_standby(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
-        await super().begin_standby(data)
-
-    async def do_standby(self, data: salobj.BaseMsgType) -> None:
         # By doing this, we can avoid the new error code put the system into
         # the Fault state again, which is annoying.
         self.system_is_ready = False
@@ -911,9 +908,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._is_inclinometer_out_of_tma_range = False
 
-        await super().do_standby(data)
-
-    async def do_enable(self, data: salobj.BaseMsgType) -> None:
+    async def begin_enable(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_enable.ack_in_progress(
             data, timeout=self.COMMAND_TIMEOUT_LONG_ENABLE
         )
@@ -952,7 +947,6 @@ class M2(salobj.ConfigurableCsc):
                     )
 
             self.system_is_ready = True
-            await super().do_enable(data)
             return
 
         # Workaround the mypy checking
@@ -1142,8 +1136,6 @@ class M2(salobj.ConfigurableCsc):
         # transition to the Fault state from now on.
         self.system_is_ready = True
 
-        await super().do_enable(data)
-
     async def _set_configuration_file(self, file: str) -> None:
         """Set the system configuration file.
 
@@ -1312,9 +1304,6 @@ class M2(salobj.ConfigurableCsc):
         # this timeout.
         await self.cmd_disable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT * 3)
 
-        await super().begin_disable(data)
-
-    async def do_disable(self, data: salobj.BaseMsgType) -> None:
         # Cancel the bump test if exists
         if not self._is_bump_test_done():
             self._task_bump_test.cancel()
@@ -1327,8 +1316,6 @@ class M2(salobj.ConfigurableCsc):
         if self.is_csc_commander():
             await self._switch_force_balance_system(False)
             await self._basic_cleanup_and_power_off_motor()
-
-        await super().do_disable(data)
 
     def _is_bump_test_done(self) -> bool:
         """The bump test is done or not.
