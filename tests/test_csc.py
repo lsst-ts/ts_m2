@@ -871,7 +871,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Force is out of range
             applied_force_axial = [0] * (NUM_ACTUATOR - NUM_TANGENT_LINK)
-            applied_force_tangent = [5000] * NUM_TANGENT_LINK
+            applied_force_tangent = [
+                LIMIT_FORCE_TANGENT_CLOSED_LOOP + 1.0
+            ] * NUM_TANGENT_LINK
             self.assertRaises(
                 ValueError,
                 self.csc._check_applied_forces_in_range,
