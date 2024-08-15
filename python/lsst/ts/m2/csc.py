@@ -188,6 +188,10 @@ class M2(salobj.ConfigurableCsc):
         # Task of the bump test
         self._task_bump_test = make_done_future()
 
+        # Task to monitor the CSC continuously gets the cell telemetry or not.
+        self._task_monitor_telemetry = make_done_future()
+        self._is_monitoring_telemetry = False
+
         # Overwritten settings
         self._is_overwritten_hardpoints = False
         self._is_overwritten_configuration_file = False
@@ -851,7 +855,12 @@ class M2(salobj.ConfigurableCsc):
         # By doing this, we can avoid the new error code put the system into
         # the Fault state again, which is annoying.
         self.system_is_ready = False
+        self._is_monitoring_telemetry = False
         await asyncio.sleep(self.SLEEP_TIME_SHORT)
+
+        # Stop to monitor the telemetry
+        if not self._task_monitor_telemetry.done():
+            self._task_monitor_telemetry.cancel()
 
         # Try to clear the error if any
         if self._exists_error_in_controller() and self.is_csc_commander():
@@ -945,6 +954,12 @@ class M2(salobj.ConfigurableCsc):
                         "The CSC is not the commander. The current control "
                         f"mode is {self.controller_cell.closed_loop_control_mode!r}."
                     )
+
+            # Run the task to monitor the telemetry
+            self._is_monitoring_telemetry = True
+            self._task_monitor_telemetry = asyncio.create_task(
+                self._monitor_telemetry()
+            )
 
             self.system_is_ready = True
             return
@@ -1132,6 +1147,10 @@ class M2(salobj.ConfigurableCsc):
         # Wait for some time to stabilize the system
         await asyncio.sleep(self.SLEEP_TIME_MEDIUM)
 
+        # Run the task to monitor the telemetry
+        self._is_monitoring_telemetry = True
+        self._task_monitor_telemetry = asyncio.create_task(self._monitor_telemetry())
+
         # System is ready now. If there is any error, the system will
         # transition to the Fault state from now on.
         self.system_is_ready = True
@@ -1298,6 +1317,51 @@ class M2(salobj.ConfigurableCsc):
         await self._execute_command(
             self.controller_cell.switch_force_balance_system, status
         )
+
+    async def _monitor_telemetry(
+        self, timeout: float = 180.0, period: float = 1.0
+    ) -> None:
+        """Monitor the telemetry regularly. If timeout, fail the system.
+
+        Parameters
+        ----------
+        timeout : `float`, optional
+            Timeout in seconds. (the default is 180.0)
+        period : `float`, optional
+            Period to check the telemetry in seconds. (the default is 1.0)
+        """
+
+        self.log.debug("Run the task to monitor the telemetry.")
+
+        times_max = timeout // period
+        times_current = times_max
+
+        seq_num_current = 0
+        while self._is_monitoring_telemetry:
+
+            if (times_current <= 0) and self.disabled_or_enabled:
+                await self.fault(
+                    code=ErrorCode.TelemetryTimeout,
+                    report=f"Cell telemetry timeout in {timeout} seconds.",
+                )
+                self._is_monitoring_telemetry = False
+
+            # CSC should always get the power status when it connects to cell
+            seq_num_new = (
+                self.tel_powerStatus.data.private_seqNum
+                if self.tel_powerStatus.has_data
+                else seq_num_current
+            )
+
+            if seq_num_current == seq_num_new:
+                times_current -= 1
+            else:
+                seq_num_current = seq_num_new
+                times_current = times_max
+
+            await asyncio.sleep(period)
+
+        self.log.debug("Stop the monitoring of telemetry.")
 
     async def begin_disable(self, data: salobj.BaseMsgType) -> None:
         # multiply timeout by 3 as this is the number of commands executed with
