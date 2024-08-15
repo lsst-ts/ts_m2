@@ -28,6 +28,7 @@ class ErrorCode(IntEnum):
     ControllerInFault = 1
     NoConnection = auto()
     InterlockEngaged = auto()
+    TelemetryTimeout = auto()
 
 
 # This is to keep the backward compatibility of ts_xml v20.0.0 that

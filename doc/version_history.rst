@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.8
+-------
+
+* Fail the CSC if the telemetry timeouts.
+
 v0.13.7
 -------
 
