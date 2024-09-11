@@ -1018,32 +1018,28 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
-            # This is to keep the backward compatibility of ts_xml v22.0.0 that
-            # does not have the 'enableLutTemperature' command defined in xml.
-            # TODO: Remove this after ts_xml v22.1.0.
-            if hasattr(self.remote, "cmd_enableLutTemperature"):
-                await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
-                # By default, the LUT temperature correction is disabled.
-                self.assertFalse(
-                    self.csc.controller_cell.mock_server.model.control_parameters[
-                        "enable_lut_temperature"
-                    ]
-                )
+            # By default, the LUT temperature correction is disabled.
+            self.assertFalse(
+                self.csc.controller_cell.mock_server.model.control_parameters[
+                    "enable_lut_temperature"
+                ]
+            )
 
-                # This should fail in the ENABLED state
-                with self.assertRaises(salobj.AckError):
-                    await self.remote.cmd_enableLutTemperature.set_start(status=True)
-
-                # This can only be done in the DISABLED state
-                await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
+            # This should fail in the ENABLED state
+            with self.assertRaises(salobj.AckError):
                 await self.remote.cmd_enableLutTemperature.set_start(status=True)
 
-                self.assertTrue(
-                    self.csc.controller_cell.mock_server.model.control_parameters[
-                        "enable_lut_temperature"
-                    ]
-                )
+            # This can only be done in the DISABLED state
+            await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
+            await self.remote.cmd_enableLutTemperature.set_start(status=True)
+
+            self.assertTrue(
+                self.csc.controller_cell.mock_server.model.control_parameters[
+                    "enable_lut_temperature"
+                ]
+            )
 
     async def test_switchForceBalanceSystem(self) -> None:
         async with self.make_csc(
@@ -1464,7 +1460,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertFalse(self.csc._is_inclinometer_out_of_tma_range)
 
             self.csc.controller_cell.mock_server.model.set_inclinometer_angle(89.0)
-            await asyncio.sleep(SLEEP_TIME_MEDIUM)
+            await asyncio.sleep(SLEEP_TIME_LONG)
 
             self.assertTrue(self.csc._is_inclinometer_out_of_tma_range)
 
