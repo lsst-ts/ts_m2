@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.9
+-------
+
+* Remove the workaround code.
+
 v0.13.8
 -------
 

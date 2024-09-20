@@ -45,12 +45,11 @@ from lsst.ts.m2com import (
 from lsst.ts.m2com import __version__ as __m2com_version__
 from lsst.ts.m2com import check_hardpoints, read_error_code_file, read_yaml_file
 from lsst.ts.utils import make_done_future
-from lsst.ts.xml.component_info import ComponentInfo
 from lsst.ts.xml.enums import MTM2
 
 from . import __version__
 from .config_schema import CONFIG_SCHEMA
-from .enum import BumpTest, ErrorCode
+from .enum import ErrorCode
 from .translator import Translator
 
 __all__ = ["M2", "run_mtm2"]
@@ -123,12 +122,6 @@ class M2(salobj.ConfigurableCsc):
         simulation_mode: int = 0,
         verbose: bool = False,
     ) -> None:
-        # This is to keep the backward compatibility of ts_xml v22.0.0 that
-        # does not have the 'enableLutTemperature' command defined in xml.
-        # TODO: Remove this after ts_xml v22.1.0.
-        component_info = ComponentInfo("MTM2", "sal")
-        if "cmd_enableLutTemperature" in component_info.topics:
-            setattr(self, "do_enableLutTemperature", self._do_enableLutTemperature)
 
         super().__init__(
             "MTM2",
@@ -1618,7 +1611,7 @@ class M2(salobj.ConfigurableCsc):
         if self.summary_state != disabled_state:
             raise RuntimeError(f"Only allowed in the {disabled_state!r}")
 
-    async def _do_enableLutTemperature(self, data: salobj.BaseMsgType) -> None:
+    async def do_enableLutTemperature(self, data: salobj.BaseMsgType) -> None:
         """Command to enable or disable the temperature look-up table (LUT)
         correction.
 
@@ -1867,11 +1860,11 @@ class M2(salobj.ConfigurableCsc):
             await self._bump_actuator(actuator, -force, period)
 
             # Publish the event that the bump test passes
-            await self._publish_status_bump_test(actuator, BumpTest.PASSED)
+            await self._publish_status_bump_test(actuator, MTM2.BumpTest.PASSED)
 
         except (Exception, asyncio.CancelledError):
             # Publish the event that the bump test fails
-            await self._publish_status_bump_test(actuator, BumpTest.FAILED)
+            await self._publish_status_bump_test(actuator, MTM2.BumpTest.FAILED)
 
             self.log.debug("Bump test task is failed or cancelled.")
 
@@ -1913,9 +1906,13 @@ class M2(salobj.ConfigurableCsc):
         # Apply the force and publish the related event
         is_positive_force = force >= 0.0
         if is_positive_force:
-            await self._publish_status_bump_test(actuator, BumpTest.TESTINGPOSITIVE)
+            await self._publish_status_bump_test(
+                actuator, MTM2.BumpTest.TESTINGPOSITIVE
+            )
         else:
-            await self._publish_status_bump_test(actuator, BumpTest.TESTINGNEGATIVE)
+            await self._publish_status_bump_test(
+                actuator, MTM2.BumpTest.TESTINGNEGATIVE
+            )
         await self._execute_command(
             self.controller_cell.apply_forces,
             force_axial,
@@ -1924,9 +1921,13 @@ class M2(salobj.ConfigurableCsc):
 
         # Wait for some time and publish the related event
         if is_positive_force:
-            await self._publish_status_bump_test(actuator, BumpTest.TESTINGPOSITIVEWAIT)
+            await self._publish_status_bump_test(
+                actuator, MTM2.BumpTest.TESTINGPOSITIVEWAIT
+            )
         else:
-            await self._publish_status_bump_test(actuator, BumpTest.TESTINGNEGATIVEWAIT)
+            await self._publish_status_bump_test(
+                actuator, MTM2.BumpTest.TESTINGNEGATIVEWAIT
+            )
         await asyncio.sleep(period)
 
         # Check the applied force with the first digit accuracy
@@ -1949,7 +1950,9 @@ class M2(salobj.ConfigurableCsc):
 
         await asyncio.sleep(period)
 
-    async def _publish_status_bump_test(self, actuator: int, status: BumpTest) -> None:
+    async def _publish_status_bump_test(
+        self, actuator: int, status: MTM2.BumpTest
+    ) -> None:
         """Publish the status of actuator bump test.
 
         Parameters
@@ -1957,8 +1960,7 @@ class M2(salobj.ConfigurableCsc):
         actuator : `int`
             0-based actuator ID.
         status : enum `MTM2.BumpTest`
-            Status of the actuator bump test. The current annotation of
-            enum "BumpTest" is to maintain the backward compatibility.
+            Status of the actuator bump test.
         """
 
         await self.evt_actuatorBumpTestStatus.set_write(
