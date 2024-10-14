@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.10
+--------
+
+* Unskip the test.
+
 v0.13.9
 -------
 
