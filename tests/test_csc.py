@@ -112,7 +112,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(self.csc.controller_cell.mock_server)
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
 
-    @unittest.skip("Skip until the DM-45051 is fixed.")
     async def test_is_gui_commander(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
