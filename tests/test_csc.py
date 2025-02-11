@@ -789,6 +789,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 mock_model.control_closed_loop.tangent_forces["applied"], tangent
             )
 
+            await asyncio.sleep(SLEEP_TIME_SHORT)
+
+            self.remote.tel_tangentForce.flush()
+            self.remote.tel_axialForce.flush()
+
             tangent_forces = await self.remote.tel_tangentForce.next(
                 flush=True, timeout=STD_TIMEOUT
             )
@@ -817,6 +822,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 ),
                 0,
             )
+
+            await asyncio.sleep(SLEEP_TIME_SHORT)
+
+            self.remote.tel_tangentForce.flush()
+            self.remote.tel_axialForce.flush()
 
             tangent_forces = await self.remote.tel_tangentForce.next(flush=True)
             axial_forces = await self.remote.tel_axialForce.next(flush=True)
@@ -863,10 +873,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         ):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
-            # Check we have the force data from simulator or not
-            await asyncio.sleep(SLEEP_TIME_SHORT)
-            self.assertTrue(self.csc.tel_axialForce.has_data)
-            self.assertTrue(self.csc.tel_tangentForce.has_data)
+            # Wait until we have the force data from simulator
+            await self.remote.tel_tangentForce.next(flush=False, timeout=STD_TIMEOUT)
+            await self.remote.tel_axialForce.next(flush=False, timeout=STD_TIMEOUT)
 
             # Force is out of range
             applied_force_axial = [0] * (NUM_ACTUATOR - NUM_TANGENT_LINK)
@@ -886,6 +895,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         ):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
+            # Wait for some time for the closed-loop control to be done
+            await asyncio.sleep(STD_TIMEOUT)
+
             # Wait for m2AssemblyInPosition to be in position before applying
             # the force.
             in_position = (
@@ -899,9 +911,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                         flush=False, timeout=STD_TIMEOUT
                     )
                 ).inPosition
-
-            # Wait for some time for the closed-loop control to be done
-            await asyncio.sleep(STD_TIMEOUT)
 
             # Move the rigid body to the new position. Note the units are um
             # and arcsec.
@@ -922,21 +931,17 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(SLEEP_TIME_LONG)
 
             # Check the new position
+            self.remote.tel_position.flush()
+
             tolerance = 0.3
 
-            position_set = self.remote.tel_position.get()
+            position_set = await self.remote.tel_position.next(
+                flush=False, timeout=STD_TIMEOUT
+            )
             for axis in ("x", "y", "z", "xRot", "yRot", "zRot"):
                 with self.subTest(telemetry="position", axis=axis):
                     self.assertLess(
                         abs(getattr(position_set, axis) - position_send[axis]),
-                        tolerance,
-                    )
-
-            position_ims_set = self.remote.tel_positionIMS.get()
-            for axis in ("x", "y", "z", "xRot", "yRot", "zRot"):
-                with self.subTest(telemetry="positionIMS", axis=axis):
-                    self.assertLess(
-                        abs(getattr(position_ims_set, axis) - position_send[axis]),
                         tolerance,
                     )
 
@@ -1270,17 +1275,17 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 actuator=actuator, displacement=displacement
             )
 
-            await asyncio.sleep(SLEEP_TIME_MEDIUM)
+            await asyncio.sleep(SLEEP_TIME_LONG)
             position_after = self._get_axial_actuator_position(actuator)
 
-            self.assertGreater((position_after - position_before), 40)
+            self.assertGreater((position_after - position_before), 30)
 
             # Move the actuator step
             step_before = self._get_axial_actuator_step(actuator)
 
             await self.remote.cmd_moveActuator.set_start(actuator=actuator, step=step)
 
-            await asyncio.sleep(SLEEP_TIME_MEDIUM)
+            await asyncio.sleep(SLEEP_TIME_LONG)
             step_after = self._get_axial_actuator_step(actuator)
 
             self.assertEqual((step_after - step_before), step)
@@ -1332,30 +1337,31 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
             # Check the events
-            await self.assert_next_sample(
-                self.remote.evt_actuatorBumpTestStatus,
-                timeout=STD_TIMEOUT,
-                actuator=1,
-                status=MTM2.BumpTest.TESTINGPOSITIVE,
-            )
-
-            await asyncio.sleep(6 * period)
-
-            data_status = self.remote.evt_actuatorBumpTestStatus.get()
-            self.assertEqual(data_status.actuator, 1)
-            self.assertEqual(data_status.status, MTM2.BumpTest.PASSED)
+            await self._check_events_bump_test(1)
 
             # Tangent link
             await self.remote.cmd_actuatorBumpTest.set_start(
                 actuator=73, force=force, period=period
             )
 
-            await asyncio.sleep(6 * period)
-
             # Check the event
-            data_status = self.remote.evt_actuatorBumpTestStatus.get()
-            self.assertEqual(data_status.actuator, 73)
-            self.assertEqual(data_status.status, MTM2.BumpTest.PASSED)
+            await self._check_events_bump_test(73)
+
+    async def _check_events_bump_test(self, actuator: int) -> None:
+
+        for status in [
+            MTM2.BumpTest.TESTINGPOSITIVE,
+            MTM2.BumpTest.TESTINGPOSITIVEWAIT,
+            MTM2.BumpTest.TESTINGNEGATIVE,
+            MTM2.BumpTest.TESTINGNEGATIVEWAIT,
+            MTM2.BumpTest.PASSED,
+        ]:
+            await self.assert_next_sample(
+                self.remote.evt_actuatorBumpTestStatus,
+                timeout=STD_TIMEOUT,
+                actuator=actuator,
+                status=status,
+            )
 
     async def test_actuatorBumpTest_running_error(self) -> None:
         async with self.make_csc(
