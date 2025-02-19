@@ -874,8 +874,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
             # Wait until we have the force data from simulator
-            await self.remote.tel_tangentForce.next(flush=False, timeout=STD_TIMEOUT)
-            await self.remote.tel_axialForce.next(flush=False, timeout=STD_TIMEOUT)
+            await self.assert_next_sample(
+                self.remote.tel_tangentForce,
+                timeout=STD_TIMEOUT,
+            )
+            await self.assert_next_sample(
+                self.remote.tel_axialForce,
+                timeout=STD_TIMEOUT,
+            )
 
             # Force is out of range
             applied_force_axial = [0] * (NUM_ACTUATOR - NUM_TANGENT_LINK)
