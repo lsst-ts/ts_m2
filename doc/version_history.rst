@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.13.11
+--------
+
+* Remove the **ts_idl**.
+* Improve the unit tests.
+
 v0.13.10
 --------
 

@@ -17,7 +17,6 @@ test:
     - ts-conda-build =0.4
     - ts-simactuators
     - ts-xml
-    - ts-idl {{ idl_version }}
     - ts-salobj {{ salobj_version }}
     - ts-tcpip
     - ts-utils
@@ -49,7 +48,6 @@ requirements:
     - setuptools_scm
     - ts-salobj
     - ts-xml
-    - ts-idl {{ idl_version }}
     - ts-simactuators
     - pandas
     - ts-tcpip
