@@ -119,11 +119,18 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Enter the Disabled state to construct the connection
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
+            self.remote.evt_commandableByDDS.flush()
+
             # Change the commander to the GUI
             await self.csc.controller_cell.mock_server._message_event.write_commandable_by_dds(
                 False
             )
-            await asyncio.sleep(SLEEP_TIME_SHORT)
+
+            await self.assert_next_sample(
+                self.remote.evt_commandableByDDS,
+                timeout=STD_TIMEOUT,
+                state=False,
+            )
 
             self.assertFalse(self.csc.is_csc_commander())
 
@@ -136,6 +143,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         ):
             # Flush the topics
             topics = [
+                "summaryState",
                 "tcpIpConnected",
                 "commandableByDDS",
                 "hardpointList",
@@ -158,17 +166,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
             # Check the summary state
-            self.assertEqual(self.csc.summary_state, salobj.State.DISABLED)
-
-            data_summary_state = await self.remote.evt_summaryState.aget(
-                timeout=STD_TIMEOUT
+            await self.assert_next_summary_state(
+                salobj.State.DISABLED, timeout=STD_TIMEOUT
             )
-            self.assertEqual(
-                data_summary_state.summaryState, int(salobj.State.DISABLED)
-            )
-
-            # Wait a little time for the data to come from server
-            await asyncio.sleep(SLEEP_TIME_MEDIUM)
 
             # Check the TCP/IP connection is on
             self.assertIsNotNone(self.csc.controller_cell.mock_server)
@@ -350,17 +350,18 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
             # Flush the topics
-            for topic in ("errorCode", "summaryFaultsStatus"):
+            for topic in ("errorCode", "summaryFaultsStatus", "summaryState"):
                 getattr(self.remote, f"evt_{topic}").flush()
 
             # Make the server fault
             mock_model = self.csc.controller_cell.mock_server.model
             mock_model.fault(MockErrorCode.LimitSwitchTriggeredClosedloop.value)
-            await asyncio.sleep(SLEEP_TIME_MEDIUM)
-
-            self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
 
             # Check the events
+            await self.assert_next_summary_state(
+                salobj.State.FAULT, timeout=STD_TIMEOUT
+            )
+
             await self.assert_next_sample(
                 self.remote.evt_summaryFaultsStatus,
                 timeout=STD_TIMEOUT,
@@ -387,7 +388,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
             # Check the summary state
-            self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
+            await self.assert_next_summary_state(
+                salobj.State.STANDBY, timeout=STD_TIMEOUT
+            )
 
             # Check the server fault
             self.assertFalse(mock_model.error_handler.exists_error())
@@ -402,7 +405,9 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Transition to the Standby state
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
 
-            self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
+            await self.assert_next_summary_state(
+                salobj.State.STANDBY, timeout=STD_TIMEOUT
+            )
 
     async def test_enable(self) -> None:
         async with self.make_csc(
@@ -422,11 +427,15 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.csc._is_overwritten_hardpoints = False
 
             # Flush the topics
-            for topic in ("config", "hardpointList"):
+            for topic in ("config", "hardpointList", "summaryState"):
                 getattr(self.remote, f"evt_{topic}").flush()
 
             # Go to the Enabled state
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
+
+            await self.assert_next_summary_state(
+                salobj.State.ENABLED, timeout=STD_TIMEOUT
+            )
 
             await self.assert_next_sample(
                 self.remote.evt_config,
@@ -449,19 +458,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
             # Check events
-            await asyncio.sleep(SLEEP_TIME_LONG)
-
             data_power_system_state = self.remote.evt_powerSystemState.get()
             self.assertTrue(data_power_system_state.status)
 
             data_inner_loop_control_mode = self.remote.evt_innerLoopControlMode.get()
             self.assertEqual(data_inner_loop_control_mode.address, NUM_ACTUATOR - 1)
-
-            self._assert_open_loop_max_limit(False)
-
-    def _assert_open_loop_max_limit(self, expected_status: bool) -> None:
-        data = self.remote.evt_openLoopMaxLimit.get()
-        self.assertEqual(data.status, expected_status)
 
     async def test_enable_power_on(self) -> None:
         async with self.make_csc(
@@ -487,13 +488,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                     power.state,
                 )
 
-            # Sleep a short time to handle the events
-            await asyncio.sleep(SLEEP_TIME_SHORT)
-
             # Go to the Enabled state
+            self.remote.evt_summaryState.flush()
+
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
-            await asyncio.sleep(SLEEP_TIME_SHORT)
+            await self.assert_next_summary_state(
+                salobj.State.ENABLED, timeout=STD_TIMEOUT
+            )
 
             controller_cell = self.csc.controller_cell
             self.assertTrue(controller_cell.are_ilc_modes_enabled())
@@ -507,22 +509,20 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
-            # Enter the Disabled state to construct the connection
-            await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
-
             # Go to the Enabled state
-            await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
+            await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
+
+            self.remote.evt_summaryState.flush()
 
             # Trigger the interlock fault
             await self.csc.controller_cell.set_bit_digital_status(
                 2, DigitalOutputStatus.BinaryLowLevel
             )
 
-            # Wait a little time to process the data
-            await asyncio.sleep(SLEEP_TIME_SHORT)
-
             # The interlock event should transition the system to Fault state
-            self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
+            await self.assert_next_summary_state(
+                salobj.State.FAULT, timeout=STD_TIMEOUT
+            )
 
     async def test_disable(self) -> None:
         async with self.make_csc(
@@ -1057,19 +1057,28 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         ):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
 
-            # The default force balance system is on when controlled by SAL
-            await asyncio.sleep(SLEEP_TIME_MEDIUM)
-            force_balance_status = self.remote.evt_forceBalanceSystemStatus.get()
+            # From the welcome messages
+            await self.assert_next_sample(
+                self.remote.evt_forceBalanceSystemStatus,
+                timeout=STD_TIMEOUT,
+                status=False,
+            )
 
-            self.assertTrue(force_balance_status.status)
+            # The default force balance system is on when controlled by SAL
+            await self.assert_next_sample(
+                self.remote.evt_forceBalanceSystemStatus,
+                timeout=STD_TIMEOUT,
+                status=True,
+            )
 
             # Switch the force balance system off
             await self.remote.cmd_switchForceBalanceSystem.set_start(status=False)
 
-            await asyncio.sleep(SLEEP_TIME_MEDIUM)
-            force_balance_status = self.remote.evt_forceBalanceSystemStatus.get()
-
-            self.assertFalse(force_balance_status.status)
+            await self.assert_next_sample(
+                self.remote.evt_forceBalanceSystemStatus,
+                timeout=STD_TIMEOUT,
+                status=False,
+            )
 
             # Switch the force balance system on
             await self.remote.cmd_switchForceBalanceSystem.set_start(status=True)
@@ -1112,13 +1121,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_clearErrors.set_start(timeout=STD_TIMEOUT)
 
             self.assertFalse(mock_model.error_handler.exists_error())
-            await asyncio.sleep(SLEEP_TIME_SHORT)
 
     async def test_setTemperatureOffset(self) -> None:
         async with self.make_csc(
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
             await salobj.set_summary_state(self.remote, salobj.State.DISABLED)
+
+            self.remote.evt_temperatureOffset.flush()
 
             # Change the offset successfully
             ring = [19.0] * NUM_TEMPERATURE_RING
@@ -1128,15 +1138,12 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 ring=ring, intake=intake, exhaust=exhaust
             )
 
-            data_temp_offset = await self.remote.evt_temperatureOffset.aget(
-                timeout=STD_TIMEOUT
-            )
-            np.testing.assert_array_equal(data_temp_offset.ring, ring)
-            np.testing.assert_array_equal(
-                data_temp_offset.intake, [0.0] * NUM_TEMPERATURE_INTAKE
-            )
-            np.testing.assert_array_equal(
-                data_temp_offset.exhaust, [0.0] * NUM_TEMPERATURE_EXHAUST
+            await self.assert_next_sample(
+                self.remote.evt_temperatureOffset,
+                timeout=STD_TIMEOUT,
+                ring=ring,
+                intake=[0.0] * NUM_TEMPERATURE_INTAKE,
+                exhaust=[0.0] * NUM_TEMPERATURE_EXHAUST,
             )
 
     async def test_bypassErrorCode(self) -> None:
@@ -1214,18 +1221,19 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertFalse(self.csc._is_overwritten_configuration_file)
 
             # Set the correct configuraion file
+            self.remote.evt_config.flush()
+
             await self.remote.cmd_setConfigurationFile.set_start(
                 file=configuration_file
             )
             self.assertTrue(self.csc._is_overwritten_configuration_file)
 
             # Check the related event
-            await asyncio.sleep(SLEEP_TIME_SHORT)
-
-            data = self.remote.evt_config.get()
-            self.assertEqual(data.version, "20180831T091922")
-            self.assertEqual(
-                data.controlParameters, "CtrlParameterFiles_2018-07-19_104257_m2"
+            await self.assert_next_sample(
+                self.remote.evt_config,
+                timeout=STD_TIMEOUT,
+                version="20180831T091922",
+                controlParameters="CtrlParameterFiles_2018-07-19_104257_m2",
             )
 
     async def test_enableOpenLoopMaxLimit(self) -> None:
@@ -1233,7 +1241,12 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
         ):
             await salobj.set_summary_state(self.remote, salobj.State.ENABLED)
-            self._assert_open_loop_max_limit(False)
+
+            await self.assert_next_sample(
+                self.remote.evt_openLoopMaxLimit,
+                timeout=STD_TIMEOUT,
+                status=False,
+            )
 
             # This should fail in the closed-loop control
             with self.assertRaises(salobj.AckError):
@@ -1246,8 +1259,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_enableOpenLoopMaxLimit.set_start(status=True)
 
             # Check the related event
-            await asyncio.sleep(SLEEP_TIME_LONG)
-            self._assert_open_loop_max_limit(True)
+            await self.assert_next_sample(
+                self.remote.evt_openLoopMaxLimit,
+                timeout=STD_TIMEOUT,
+                status=True,
+            )
 
     async def test_moveActuator(self) -> None:
         async with self.make_csc(
@@ -1435,10 +1451,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(self.csc._is_overwritten_hardpoints)
 
-            data_hardpoints = await self.remote.evt_hardpointList.next(
-                flush=False, timeout=STD_TIMEOUT
+            await self.assert_next_sample(
+                self.remote.evt_hardpointList,
+                timeout=STD_TIMEOUT,
+                actuators=[4, 14, 24, 74, 76, 78],
             )
-            self.assertEqual(data_hardpoints.actuators, [4, 14, 24, 74, 76, 78])
 
     async def test_check_limit_switch(self) -> None:
         async with self.make_csc(
@@ -1452,14 +1469,17 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             error_handler.add_new_limit_switch(1, LimitSwitchType.Retract)
             error_handler.add_new_limit_switch(2, LimitSwitchType.Extend)
 
-            await asyncio.sleep(SLEEP_TIME_LONG)
-
             # Check the limit switch event
-            data_limit_switch_retract = self.remote.evt_limitSwitchRetract.get()
-            self.assertEqual(data_limit_switch_retract.actuatorId, 1)
-
-            data_limit_switch_extend = self.remote.evt_limitSwitchExtend.get()
-            self.assertEqual(data_limit_switch_extend.actuatorId, 2)
+            await self.assert_next_sample(
+                self.remote.evt_limitSwitchRetract,
+                timeout=STD_TIMEOUT,
+                actuatorId=1,
+            )
+            await self.assert_next_sample(
+                self.remote.evt_limitSwitchExtend,
+                timeout=STD_TIMEOUT,
+                actuatorId=2,
+            )
 
     async def test_check_is_inclinometer_out_of_tma_range(self) -> None:
         async with self.make_csc(
