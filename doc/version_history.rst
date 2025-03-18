@@ -2,6 +2,12 @@
 Version History
 ===============
 
+v0.13.13
+--------
+
+* Workaround the kafka topic from the old component.
+* Adapt the modified enum of **BumpTest** in **ts_xml**.
+
 v0.13.12
 --------
 
