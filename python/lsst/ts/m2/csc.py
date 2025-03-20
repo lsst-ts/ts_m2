@@ -1864,7 +1864,9 @@ class M2(salobj.ConfigurableCsc):
 
         except (Exception, asyncio.CancelledError):
             # Publish the event that the bump test fails
-            await self._publish_status_bump_test(actuator, MTM2.BumpTest.FAILED)
+            await self._publish_status_bump_test(
+                actuator, MTM2.BumpTest.FAILED_NONTESTEDPROBLEM
+            )
 
             self.log.debug("Bump test task is failed or cancelled.")
 
