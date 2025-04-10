@@ -1466,14 +1466,21 @@ class M2(salobj.ConfigurableCsc):
         max_force_axial = np.max(np.abs(total_force_axial))
         max_force_tangent = np.max(np.abs(total_force_tangent))
 
-        if max_force_axial >= LIMIT_FORCE_AXIAL_CLOSED_LOOP:
+        # Workaround of the mypy checking
+        assert self.config is not None
+
+        applied_force_offset = self.config.applied_force_offset
+        limit_axial = LIMIT_FORCE_AXIAL_CLOSED_LOOP - applied_force_offset
+        limit_tangent = LIMIT_FORCE_TANGENT_CLOSED_LOOP - applied_force_offset
+
+        if max_force_axial >= limit_axial:
             raise ValueError(
-                f"Max axial force ({max_force_axial:.2f} N) >= {LIMIT_FORCE_AXIAL_CLOSED_LOOP} N."
+                f"Max axial force ({max_force_axial:.2f} N) >= {limit_axial} N."
             )
 
-        if max_force_tangent >= LIMIT_FORCE_TANGENT_CLOSED_LOOP:
+        if max_force_tangent >= limit_tangent:
             raise ValueError(
-                f"Max tangent force ({max_force_tangent:.2f} N) >= {LIMIT_FORCE_TANGENT_CLOSED_LOOP} N."
+                f"Max tangent force ({max_force_tangent:.2f} N) >= {limit_tangent} N."
             )
 
     async def do_positionMirror(self, data: salobj.BaseMsgType) -> None:
