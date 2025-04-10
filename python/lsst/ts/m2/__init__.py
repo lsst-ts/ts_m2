@@ -21,7 +21,7 @@
 
 # Set __version__ before importing the CSC
 try:
-    from .version import *
+    from .version import __version__
 except ImportError:
     __version__ = "?"
 
