@@ -815,7 +815,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             mock_model = self.csc.controller_cell.mock_server.model
 
             set_axial_force = np.zeros(n_axial_actuators)
-            set_axial_force[0] = LIMIT_FORCE_AXIAL_CLOSED_LOOP + 1.0
+            set_axial_force[0] = LIMIT_FORCE_AXIAL_CLOSED_LOOP
 
             with self.assertRaises(
                 salobj.AckError,
@@ -827,7 +827,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Check sending tangent forces out of limit
             set_tangent_force = np.zeros(NUM_TANGENT_LINK)
-            set_tangent_force[0] = LIMIT_FORCE_TANGENT_CLOSED_LOOP + 1.0
+            set_tangent_force[0] = LIMIT_FORCE_TANGENT_CLOSED_LOOP
 
             with self.assertRaises(
                 salobj.AckError,

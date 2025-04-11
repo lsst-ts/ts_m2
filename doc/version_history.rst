@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.15
+--------
+
+* Restrict the range of the applied force to avoid the triggering of the force limit under the closed-loop control.
+
 v0.13.14
 --------
 
