@@ -86,5 +86,10 @@ properties:
         value should be greater than 0. If 0 is used, the default value will be
         applied.
     type: number
+  applied_force_offset:
+    description: >-
+        Applied force offset to restrict its available range to avoid the
+        triggering of the force limit under the closed-loop control.
+    type: number
 """
 )
