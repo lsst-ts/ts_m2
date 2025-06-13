@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.16
+--------
+
+* Simplify the ``setup.py``.
+
 v0.13.15
 --------
 
