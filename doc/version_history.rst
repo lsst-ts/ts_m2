@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.17
+--------
+
+* Call the ``super().asyncTearDown()`` in **test_csc.py**.
+
 v0.13.16
 --------
 
