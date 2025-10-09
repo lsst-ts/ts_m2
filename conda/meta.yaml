@@ -9,12 +9,13 @@ source:
 build:
   noarch: generic
   script: {{ PYTHON }} -m pip install --no-deps --ignore-installed .
+  string: "py{{ PY_VER | replace('.', '') }}{{ PKG_HASH }}_{{ PKG_BUILDNUM }}"
   entry_points:
     - run_mtm2 = lsst.ts.m2.csc:run_mtm2
 
 test:
   requires:
-    - ts-conda-build =0.4
+    - ts-conda-build =0.5
     - ts-simactuators
     - ts-xml
     - ts-salobj {{ salobj_version }}
@@ -41,7 +42,7 @@ requirements:
     - python {{ python }}
     - setuptools_scm
     - setuptools
-    - ts-conda-build =0.4
+    - ts-conda-build =0.5
   run:
     - python {{ python }}
     - setuptools
