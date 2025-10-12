@@ -1,5 +1,5 @@
 [build-system]
-requires = [ "setuptools", "setuptools_scm" ]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,7 +9,7 @@ This package is the commandable SAL component (CSC) and provides a simple
 emulator for the M2 control system."""
 license = { text = "GPL" }
 classifiers = [ "Programming Language :: Python :: 3" ]
-urls = {documentation = "https://jira.lsstcorp.org/secure/Dashboard.jspa", repository = "https://github.com/lsst-ts/ts_m2" }
+urls = {documentation = "https://ts-m2.lsst.io", repository = "https://github.com/lsst-ts/ts_m2" }
 dynamic = [ "version" ]
 
 [tool.setuptools.dynamic]

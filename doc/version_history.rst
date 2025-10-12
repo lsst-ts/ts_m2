@@ -2,6 +2,21 @@
 Version History
 ===============
 
+v0.13.18
+--------
+
+* Use the ts-conda-build 0.5 in conda recipe.
+
+v0.13.17
+--------
+
+* Call the ``super().asyncTearDown()`` in **test_csc.py**.
+
+v0.13.16
+--------
+
+* Simplify the ``setup.py``.
+
 v0.13.15
 --------
 

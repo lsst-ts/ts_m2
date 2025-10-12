@@ -90,6 +90,8 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         if self.csc_mtmount is not None:
             await self.csc_mtmount.close()
 
+        await super().asyncTearDown()
+
     async def test_bin_script(self) -> None:
         await self.check_bin_script(
             name="MTM2",
