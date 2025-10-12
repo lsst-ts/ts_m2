@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.18
+--------
+
+* Use the ts-conda-build 0.5 in conda recipe.
+
 v0.13.17
 --------
 
