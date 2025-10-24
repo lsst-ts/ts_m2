@@ -109,25 +109,19 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_instantiation_m2_normal_mode(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=0
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=0):
             self.assertIsNone(self.csc.controller_cell.mock_server)
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
 
     async def test_is_gui_commander(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             # Enter the Disabled state to construct the connection
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
             await self._flush_kafka_topic("evt_commandableByDDS")
 
             # Change the commander to the GUI
-            await self.csc.controller_cell.mock_server._message_event.write_commandable_by_dds(
-                False
-            )
+            await self.csc.controller_cell.mock_server._message_event.write_commandable_by_dds(False)
 
             await self.assert_next_sample(
                 self.remote.evt_commandableByDDS,
@@ -141,7 +135,6 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 await self.remote.cmd_clearErrors.set_start(timeout=STD_TIMEOUT)
 
     async def _flush_kafka_topic(self, name: str) -> None:
-
         # Workaround the kafka to discard the topic from an old component
         topic = getattr(self.remote, name)
 
@@ -153,9 +146,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
         topic.flush()
 
     async def test_start(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             # Flush the event topics
             topics = [
                 "summaryState",
@@ -181,9 +172,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
             # Check the summary state
-            await self.assert_next_summary_state(
-                salobj.State.DISABLED, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.DISABLED, timeout=STD_TIMEOUT)
 
             # Check the TCP/IP connection is on
             self.assertIsNotNone(self.csc.controller_cell.mock_server)
@@ -202,9 +191,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 self.remote.evt_tcpIpConnected, timeout=STD_TIMEOUT, isConnected=True
             )
 
-            await self.assert_next_sample(
-                self.remote.evt_commandableByDDS, timeout=STD_TIMEOUT, state=True
-            )
+            await self.assert_next_sample(self.remote.evt_commandableByDDS, timeout=STD_TIMEOUT, state=True)
 
             await self.assert_next_sample(
                 self.remote.evt_hardpointList,
@@ -220,9 +207,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 ilcs=ilcs,
             )
 
-            await self.assert_next_sample(
-                self.remote.evt_interlock, timeout=STD_TIMEOUT, state=False
-            )
+            await self.assert_next_sample(self.remote.evt_interlock, timeout=STD_TIMEOUT, state=False)
 
             await self.assert_next_sample(
                 self.remote.evt_inclinationTelemetrySource,
@@ -302,9 +287,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             for topic in topics:
                 await self._flush_kafka_topic(f"tel_{topic}")
 
-            data_power_status = await self.remote.tel_powerStatus.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
+            data_power_status = await self.remote.tel_powerStatus.next(flush=False, timeout=STD_TIMEOUT)
             self.assertLess(abs(data_power_status.motorVoltage), 1)
             self.assertLess(abs(data_power_status.motorCurrent), 1)
             self.assertLess(abs(data_power_status.commVoltage), 1)
@@ -325,26 +308,20 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(data_disp_sensors.deltaZ, [0] * 6)
 
     async def test_select_inclination_source(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             control_parameters = self.csc.controller_cell.control_parameters
             control_parameters["use_external_elevation_angle"] = True
             control_parameters["enable_angle_comparison"] = True
             control_parameters["max_angle_difference"] = 3.0
 
-            self.csc._select_inclination_source(
-                MTM2.InclinationTelemetrySource.ONBOARD, 2.0, False
-            )
+            self.csc._select_inclination_source(MTM2.InclinationTelemetrySource.ONBOARD, 2.0, False)
 
             self.assertFalse(control_parameters["use_external_elevation_angle"])
             self.assertFalse(control_parameters["enable_angle_comparison"])
             self.assertEqual(control_parameters["max_angle_difference"], 2.0)
 
     async def test_standby_no_fault(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
 
             # Enter the Disabled state to construct the connection
@@ -357,9 +334,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
-            self.assertFalse(
-                self.csc.controller_cell.mock_server.are_servers_connected()
-            )
+            self.assertFalse(self.csc.controller_cell.mock_server.are_servers_connected())
 
             # The internal data should be reset
             self.assertFalse(self.csc._is_overwritten_hardpoints)
@@ -369,9 +344,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.csc.summary_state, salobj.State.STANDBY)
 
     async def test_standby_fault(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
 
             # Enter the Enabled state first
@@ -387,9 +360,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             mock_model.fault(MockErrorCode.LimitSwitchTriggeredClosedloop.value)
 
             # Check the events
-            await self.assert_next_summary_state(
-                salobj.State.FAULT, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.FAULT, timeout=STD_TIMEOUT)
 
             await self.assert_next_sample(
                 self.remote.evt_summaryFaultsStatus,
@@ -412,31 +383,23 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Do the standby to disconnect the server
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
-            self.assertFalse(
-                self.csc.controller_cell.mock_server.are_servers_connected()
-            )
+            self.assertFalse(self.csc.controller_cell.mock_server.are_servers_connected())
 
             # Check the summary state
-            await self.assert_next_summary_state(
-                salobj.State.STANDBY, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.STANDBY, timeout=STD_TIMEOUT)
 
             # Check the server fault
             self.assertFalse(mock_model.error_handler.exists_error())
 
     async def test_enable(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
 
             # Enter the Disabled state to construct the connection
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
 
             # Change the hardpoints
-            await self.remote.cmd_setHardpointList.set_start(
-                actuators=[3, 13, 23, 73, 75, 77]
-            )
+            await self.remote.cmd_setHardpointList.set_start(actuators=[3, 13, 23, 73, 75, 77])
             await asyncio.sleep(SLEEP_TIME_SHORT)
 
             # Put the overwritten to False to let the setting in configuration
@@ -450,9 +413,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Go to the Enabled state
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
-            await self.assert_next_summary_state(
-                salobj.State.ENABLED, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.ENABLED, timeout=STD_TIMEOUT)
 
             await self.assert_next_sample(
                 self.remote.evt_config,
@@ -482,9 +443,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(data_inner_loop_control_mode.address, NUM_ACTUATOR - 1)
 
     async def test_enable_power_on(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
 
             # Enter the Disabled state to construct the connection
@@ -512,9 +471,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
 
-            await self.assert_next_summary_state(
-                salobj.State.ENABLED, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.ENABLED, timeout=STD_TIMEOUT)
 
             controller_cell = self.csc.controller_cell
             self.assertTrue(controller_cell.are_ilc_modes_enabled())
@@ -525,35 +482,26 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertTrue(self.csc.system_is_ready)
 
     async def test_enable_interlock(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             # Go to the Enabled state
             await self._set_summary_state(salobj.State.ENABLED)
 
             self.remote.evt_summaryState.flush()
 
             # Trigger the interlock fault
-            await self.csc.controller_cell.set_bit_digital_status(
-                2, DigitalOutputStatus.BinaryLowLevel
-            )
+            await self.csc.controller_cell.set_bit_digital_status(2, DigitalOutputStatus.BinaryLowLevel)
 
             # The interlock event should transition the system to Fault state
-            await self.assert_next_summary_state(
-                salobj.State.FAULT, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.FAULT, timeout=STD_TIMEOUT)
 
     async def _set_summary_state(self, state: salobj.State) -> None:
-
         # Workaround the kafka to discard the topic from an old component
         await self._flush_kafka_topic("evt_summaryState")
 
         await salobj.set_summary_state(self.remote, state)
 
     async def test_disable(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
 
             # Enter the Disabled state to construct the connection
@@ -578,9 +526,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_check_standard_state_transitions(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             # BaseCscTestCase.check_standard_state_transitions() can not be
             # used here because I need time to let the connection to be
             # constructed
@@ -590,37 +536,27 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertFalse(self.csc.system_is_ready)
 
             await self.remote.cmd_start.set_start(timeout=STD_TIMEOUT)
-            await self.assert_next_summary_state(
-                salobj.State.DISABLED, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.DISABLED, timeout=STD_TIMEOUT)
 
             self.assertFalse(self.csc.system_is_ready)
 
             await self.remote.cmd_enable.set_start(timeout=STD_TIMEOUT)
-            await self.assert_next_summary_state(
-                salobj.State.ENABLED, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.ENABLED, timeout=STD_TIMEOUT)
 
             self.assertTrue(self.csc.system_is_ready)
 
             await self.remote.cmd_disable.set_start(timeout=STD_TIMEOUT)
-            await self.assert_next_summary_state(
-                salobj.State.DISABLED, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.DISABLED, timeout=STD_TIMEOUT)
 
             self.assertFalse(self.csc.system_is_ready)
 
             await self.remote.cmd_standby.set_start(timeout=STD_TIMEOUT)
-            await self.assert_next_summary_state(
-                salobj.State.STANDBY, timeout=STD_TIMEOUT
-            )
+            await self.assert_next_summary_state(salobj.State.STANDBY, timeout=STD_TIMEOUT)
 
             self.assertFalse(self.csc.system_is_ready)
 
     async def test_connection_multiple_times(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
 
             # First time of connection
@@ -629,21 +565,15 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # sure I can get the controller's state event
             await self._set_summary_state(salobj.State.ENABLED)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
-            self.assertTrue(
-                self.csc.controller_cell.mock_server.are_servers_connected()
-            )
+            self.assertTrue(self.csc.controller_cell.mock_server.are_servers_connected())
 
             # Check the last sequence ID
-            self.assertEqual(
-                self.csc.controller_cell.client_command.last_sequence_id, 21
-            )
+            self.assertEqual(self.csc.controller_cell.client_command.last_sequence_id, 21)
 
             # Enter the Standby state to close the connection
             await self._set_summary_state(salobj.State.STANDBY)
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
-            self.assertFalse(
-                self.csc.controller_cell.mock_server.are_servers_connected()
-            )
+            self.assertFalse(self.csc.controller_cell.mock_server.are_servers_connected())
 
             # Second time of connection
 
@@ -651,32 +581,22 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # sure I can get the controller's state event
             await self._set_summary_state(salobj.State.ENABLED)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
-            self.assertTrue(
-                self.csc.controller_cell.mock_server.are_servers_connected()
-            )
+            self.assertTrue(self.csc.controller_cell.mock_server.are_servers_connected())
 
             # Check the last sequence ID. Note the value should be 49 instead
             # of 21 from the previous connection.
-            self.assertEqual(
-                self.csc.controller_cell.client_command.last_sequence_id, 49
-            )
+            self.assertEqual(self.csc.controller_cell.client_command.last_sequence_id, 49)
 
     async def test_telemetry_loop(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
 
             for tel in self.remote.salinfo.telemetry_names:
                 with self.subTest(telemetry=tel):
-                    await getattr(self.remote, f"tel_{tel}").next(
-                        flush=True, timeout=STD_TIMEOUT
-                    )
+                    await getattr(self.remote, f"tel_{tel}").next(flush=True, timeout=STD_TIMEOUT)
 
     async def test_connection_monitor_loop(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             # Enter the Disabled state to construct the connection
             await self._set_summary_state(salobj.State.DISABLED)
             self.assertTrue(self.csc.controller_cell.are_clients_connected())
@@ -691,78 +611,54 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(time_wait_connection_monitor_check)
 
             self.assertFalse(self.csc.controller_cell.are_clients_connected())
-            self.assertFalse(
-                self.csc.controller_cell.mock_server.are_servers_connected()
-            )
+            self.assertFalse(self.csc.controller_cell.mock_server.are_servers_connected())
 
             self.assertEqual(self.csc.summary_state, salobj.State.FAULT)
 
     async def test_applyForces_wrong_state(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             axial = np.round(
-                np.random.normal(
-                    size=len(self.remote.cmd_applyForces.DataType().axial)
-                ),
+                np.random.normal(size=len(self.remote.cmd_applyForces.DataType().axial)),
                 decimals=5,
             )
             tangent = np.round(
-                np.random.normal(
-                    size=len(self.remote.cmd_applyForces.DataType().tangent)
-                ),
+                np.random.normal(size=len(self.remote.cmd_applyForces.DataType().tangent)),
                 decimals=5,
             )
 
             with self.assertRaises(salobj.AckError):
-                await self.remote.cmd_applyForces.set_start(
-                    axial=axial, tangent=tangent, timeout=STD_TIMEOUT
-                )
+                await self.remote.cmd_applyForces.set_start(axial=axial, tangent=tangent, timeout=STD_TIMEOUT)
 
     async def test_applyForces_wrong_control_mode(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
             await self.remote.cmd_switchForceBalanceSystem.set_start(status=False)
 
             axial = np.round(
-                np.random.normal(
-                    size=len(self.remote.cmd_applyForces.DataType().axial)
-                ),
+                np.random.normal(size=len(self.remote.cmd_applyForces.DataType().axial)),
                 decimals=5,
             )
             tangent = np.round(
-                np.random.normal(
-                    size=len(self.remote.cmd_applyForces.DataType().tangent)
-                ),
+                np.random.normal(size=len(self.remote.cmd_applyForces.DataType().tangent)),
                 decimals=5,
             )
 
             with self.assertRaises(salobj.AckError):
-                await self.remote.cmd_applyForces.set_start(
-                    axial=axial, tangent=tangent, timeout=STD_TIMEOUT
-                )
+                await self.remote.cmd_applyForces.set_start(axial=axial, tangent=tangent, timeout=STD_TIMEOUT)
 
     async def test_applyForces(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_m2AssemblyInPosition")
             await self._set_summary_state(salobj.State.ENABLED)
 
             # Wait for m2AssemblyInPosition to be in position before applying
             # the force.
             in_position = (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
+                await self.remote.evt_m2AssemblyInPosition.next(flush=False, timeout=STD_TIMEOUT)
             ).inPosition
             while not in_position:
                 in_position = (
-                    await self.remote.evt_m2AssemblyInPosition.next(
-                        flush=False, timeout=STD_TIMEOUT
-                    )
+                    await self.remote.evt_m2AssemblyInPosition.next(flush=False, timeout=STD_TIMEOUT)
                 ).inPosition
 
             # Apply the force
@@ -773,29 +669,19 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             tangent = [0.0] * NUM_TANGENT_LINK
             tangent[0] = 2.0
 
-            await self.remote.cmd_applyForces.set_start(
-                axial=axial, tangent=tangent, timeout=STD_TIMEOUT
-            )
+            await self.remote.cmd_applyForces.set_start(axial=axial, tangent=tangent, timeout=STD_TIMEOUT)
 
             mock_model = self.csc.controller_cell.mock_server.model
-            np.testing.assert_array_equal(
-                mock_model.control_closed_loop.axial_forces["applied"], axial
-            )
-            np.testing.assert_array_equal(
-                mock_model.control_closed_loop.tangent_forces["applied"], tangent
-            )
+            np.testing.assert_array_equal(mock_model.control_closed_loop.axial_forces["applied"], axial)
+            np.testing.assert_array_equal(mock_model.control_closed_loop.tangent_forces["applied"], tangent)
 
             await asyncio.sleep(SLEEP_TIME_MEDIUM)
 
             await self._flush_kafka_topic("tel_tangentForce")
             await self._flush_kafka_topic("tel_axialForce")
 
-            tangent_forces = await self.remote.tel_tangentForce.next(
-                flush=True, timeout=STD_TIMEOUT
-            )
-            axial_forces = await self.remote.tel_axialForce.next(
-                flush=True, timeout=STD_TIMEOUT
-            )
+            tangent_forces = await self.remote.tel_tangentForce.next(flush=True, timeout=STD_TIMEOUT)
+            axial_forces = await self.remote.tel_axialForce.next(flush=True, timeout=STD_TIMEOUT)
 
             self.assertEqual(tangent_forces.applied[0], 2.0)
             self.assertEqual(axial_forces.applied[0], 1.0)
@@ -823,9 +709,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 salobj.AckError,
                 msg="Axial set points failed to check force limit.",
             ):
-                await self.remote.cmd_applyForces.set_start(
-                    axial=set_axial_force, timeout=STD_TIMEOUT
-                )
+                await self.remote.cmd_applyForces.set_start(axial=set_axial_force, timeout=STD_TIMEOUT)
 
             # Check sending tangent forces out of limit
             set_tangent_force = np.zeros(NUM_TANGENT_LINK)
@@ -835,14 +719,10 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 salobj.AckError,
                 msg="Tangent set points failed to check force limit.",
             ):
-                await self.remote.cmd_applyForces.set_start(
-                    tangent=set_tangent_force, timeout=STD_TIMEOUT
-                )
+                await self.remote.cmd_applyForces.set_start(tangent=set_tangent_force, timeout=STD_TIMEOUT)
 
     async def test_check_applied_forces_in_range(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
 
             await self._flush_kafka_topic("tel_tangentForce")
@@ -860,9 +740,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Force is out of range
             applied_force_axial = [0] * (NUM_ACTUATOR - NUM_TANGENT_LINK)
-            applied_force_tangent = [
-                LIMIT_FORCE_TANGENT_CLOSED_LOOP + 1.0
-            ] * NUM_TANGENT_LINK
+            applied_force_tangent = [LIMIT_FORCE_TANGENT_CLOSED_LOOP + 1.0] * NUM_TANGENT_LINK
             self.assertRaises(
                 ValueError,
                 self.csc._check_applied_forces_in_range,
@@ -871,9 +749,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_positionMirror(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_m2AssemblyInPosition")
             await self._set_summary_state(salobj.State.ENABLED)
 
@@ -883,15 +759,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Wait for m2AssemblyInPosition to be in position before applying
             # the force.
             in_position = (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
+                await self.remote.evt_m2AssemblyInPosition.next(flush=False, timeout=STD_TIMEOUT)
             ).inPosition
             while not in_position:
                 in_position = (
-                    await self.remote.evt_m2AssemblyInPosition.next(
-                        flush=False, timeout=STD_TIMEOUT
-                    )
+                    await self.remote.evt_m2AssemblyInPosition.next(flush=False, timeout=STD_TIMEOUT)
                 ).inPosition
 
             # Move the rigid body to the new position. Note the units are um
@@ -902,9 +774,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                 "z": 3.0,
             }
 
-            await self.remote.cmd_positionMirror.set_start(
-                **position_send, timeout=STD_TIMEOUT
-            )
+            await self.remote.cmd_positionMirror.set_start(**position_send, timeout=STD_TIMEOUT)
 
             # Wait for some time for the movement to be done
             await asyncio.sleep(SLEEP_TIME_LONG)
@@ -914,9 +784,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             tolerance = 0.5
 
-            position_set = await self.remote.tel_position.next(
-                flush=False, timeout=STD_TIMEOUT
-            )
+            position_set = await self.remote.tel_position.next(flush=False, timeout=STD_TIMEOUT)
             for axis in ("x", "y", "z"):
                 with self.subTest(telemetry="position", axis=axis):
                     self.assertLess(
@@ -925,9 +793,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
                     )
 
     async def test_selectInclinationSource(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_inclinationTelemetrySource")
             await self._set_summary_state(salobj.State.ENABLED)
 
@@ -946,9 +812,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             n_samples = 10
             zenith_angle_values = np.zeros(n_samples)
             for i in range(n_samples):
-                zenith_angle = await self.remote.tel_zenithAngle.next(
-                    flush=True, timeout=STD_TIMEOUT
-                )
+                zenith_angle = await self.remote.tel_zenithAngle.next(flush=True, timeout=STD_TIMEOUT)
 
                 zenith_angle_values[i] = zenith_angle.measured
 
@@ -998,16 +862,12 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_enableLutTemperature(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
 
             # By default, the LUT temperature correction is disabled.
             self.assertFalse(
-                self.csc.controller_cell.mock_server.model.control_parameters[
-                    "enable_lut_temperature"
-                ]
+                self.csc.controller_cell.mock_server.model.control_parameters["enable_lut_temperature"]
             )
 
             # This should fail in the ENABLED state
@@ -1019,15 +879,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             await self.remote.cmd_enableLutTemperature.set_start(status=True)
 
             self.assertTrue(
-                self.csc.controller_cell.mock_server.model.control_parameters[
-                    "enable_lut_temperature"
-                ]
+                self.csc.controller_cell.mock_server.model.control_parameters["enable_lut_temperature"]
             )
 
     async def test_switchForceBalanceSystem(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_forceBalanceSystemStatus")
             await self._set_summary_state(salobj.State.ENABLED)
 
@@ -1059,17 +915,13 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
 
             # Wait for system to be in position
             while not (
-                await self.remote.evt_m2AssemblyInPosition.next(
-                    flush=False, timeout=STD_TIMEOUT
-                )
+                await self.remote.evt_m2AssemblyInPosition.next(flush=False, timeout=STD_TIMEOUT)
             ).inPosition:
                 pass
 
             # Check axial forces
             await self._flush_kafka_topic("tel_axialForce")
-            axial_forces = await self.remote.tel_axialForce.next(
-                flush=True, timeout=STD_TIMEOUT
-            )
+            axial_forces = await self.remote.tel_axialForce.next(flush=True, timeout=STD_TIMEOUT)
 
             # LUT gravity absolute value should be larger than zero
             self.assertTrue(np.all(np.abs(axial_forces.lutGravity) > 0.0))
@@ -1078,9 +930,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(np.sum(np.abs(axial_forces.lutTemperature)), 0.0)
 
     async def test_clearErrors(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
 
             # Enter the Disabled state to construct the connection
@@ -1100,9 +950,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertFalse(mock_model.error_handler.exists_error())
 
     async def test_setTemperatureOffset(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_temperatureOffset")
             await self._set_summary_state(salobj.State.DISABLED)
 
@@ -1112,9 +960,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             ring = [19.0] * NUM_TEMPERATURE_RING
             intake = [19.0] * NUM_TEMPERATURE_INTAKE
             exhaust = [19.0] * NUM_TEMPERATURE_EXHAUST
-            await self.remote.cmd_setTemperatureOffset.set_start(
-                ring=ring, intake=intake, exhaust=exhaust
-            )
+            await self.remote.cmd_setTemperatureOffset.set_start(ring=ring, intake=intake, exhaust=exhaust)
 
             await self.assert_next_sample(
                 self.remote.evt_temperatureOffset,
@@ -1125,9 +971,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_bypassErrorCode(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
             await self._flush_kafka_topic("evt_enabledFaultsMask")
 
@@ -1165,9 +1009,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_resetEnabledFaultsMask(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             # This should fail in the Standby state
             code = 6077
             with self.assertRaises(salobj.AckError):
@@ -1186,17 +1028,11 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(self.csc._error_codes_bypass), 0)
 
     async def test_setConfigurationFile(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             # This should fail in the Standby state
-            configuration_file = (
-                "Configurable_File_Description_20180831T091922_M2_optical.csv"
-            )
+            configuration_file = "Configurable_File_Description_20180831T091922_M2_optical.csv"
             with self.assertRaises(salobj.AckError):
-                await self.remote.cmd_setConfigurationFile.set_start(
-                    file=configuration_file
-                )
+                await self.remote.cmd_setConfigurationFile.set_start(file=configuration_file)
 
             # Enter the Disabled state to construct the connection
             await self._flush_kafka_topic("evt_summaryState")
@@ -1210,9 +1046,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Set the correct configuraion file
             await self._flush_kafka_topic("evt_config")
 
-            await self.remote.cmd_setConfigurationFile.set_start(
-                file=configuration_file
-            )
+            await self.remote.cmd_setConfigurationFile.set_start(file=configuration_file)
             self.assertTrue(self.csc._is_overwritten_configuration_file)
 
             # Check the related event
@@ -1224,9 +1058,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_enableOpenLoopMaxLimit(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_openLoopMaxLimit")
             await self._set_summary_state(salobj.State.ENABLED)
 
@@ -1254,18 +1086,14 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_moveActuator(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
 
             # This should fail in the closed-loop control
             actuator = 1
             step = 1000
             with self.assertRaises(salobj.AckError):
-                await self.remote.cmd_moveActuator.set_start(
-                    actuator=actuator, step=step
-                )
+                await self.remote.cmd_moveActuator.set_start(actuator=actuator, step=step)
 
             # Switch the force balance system off
             await self.remote.cmd_switchForceBalanceSystem.set_start(status=False)
@@ -1281,9 +1109,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             # Move the actuator displacement
             position_before = await self._get_axial_actuator_position(actuator)
 
-            await self.remote.cmd_moveActuator.set_start(
-                actuator=actuator, displacement=displacement
-            )
+            await self.remote.cmd_moveActuator.set_start(actuator=actuator, displacement=displacement)
 
             await asyncio.sleep(SLEEP_TIME_LONG)
             position_after = await self._get_axial_actuator_position(actuator)
@@ -1303,23 +1129,17 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
     async def _get_axial_actuator_position(self, actuator: int) -> float:
         await self._flush_kafka_topic("tel_axialEncoderPositions")
 
-        data = await self.remote.tel_axialEncoderPositions.next(
-            flush=True, timeout=STD_TIMEOUT
-        )
+        data = await self.remote.tel_axialEncoderPositions.next(flush=True, timeout=STD_TIMEOUT)
         return data.position[actuator]
 
     async def _get_axial_actuator_step(self, actuator: int) -> int:
         await self._flush_kafka_topic("tel_axialActuatorSteps")
 
-        data = await self.remote.tel_axialActuatorSteps.next(
-            flush=True, timeout=STD_TIMEOUT
-        )
+        data = await self.remote.tel_axialActuatorSteps.next(flush=True, timeout=STD_TIMEOUT)
         return data.steps[actuator]
 
     async def test_resetActuatorSteps(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
 
             # This should fail in the closed-loop control
@@ -1342,32 +1162,25 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertLess((step_after - step_before), step)
 
     async def test_actuatorBumpTest(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
             await self._flush_kafka_topic("evt_actuatorBumpTestStatus")
 
             # Axial actuator
             force = 5.26
             period = 3.0
-            await self.remote.cmd_actuatorBumpTest.set_start(
-                actuator=1, force=force, period=period
-            )
+            await self.remote.cmd_actuatorBumpTest.set_start(actuator=1, force=force, period=period)
 
             # Check the events
             await self._check_events_bump_test(1)
 
             # Tangent link
-            await self.remote.cmd_actuatorBumpTest.set_start(
-                actuator=73, force=force, period=period
-            )
+            await self.remote.cmd_actuatorBumpTest.set_start(actuator=73, force=force, period=period)
 
             # Check the event
             await self._check_events_bump_test(73)
 
     async def _check_events_bump_test(self, actuator: int) -> None:
-
         for status in [
             MTM2.BumpTest.TESTINGPOSITIVE,
             MTM2.BumpTest.TESTINGPOSITIVEWAIT,
@@ -1383,39 +1196,29 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_actuatorBumpTest_running_error(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
 
             # Run the bump test
             force = 5.26
             period = 3.0
-            await self.remote.cmd_actuatorBumpTest.set_start(
-                actuator=1, force=force, period=period
-            )
+            await self.remote.cmd_actuatorBumpTest.set_start(actuator=1, force=force, period=period)
 
             await asyncio.sleep(1.0)
 
             # This should fail because there is a running bump test now
             with self.assertRaises(salobj.AckError):
-                await self.remote.cmd_actuatorBumpTest.set_start(
-                    actuator=2, force=force, period=period
-                )
+                await self.remote.cmd_actuatorBumpTest.set_start(actuator=2, force=force, period=period)
 
             # Kill the running bump test
             self.csc._task_bump_test.cancel()
             await self.csc._task_bump_test
 
     async def test_killActuatorBumpTest(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._set_summary_state(salobj.State.ENABLED)
 
-            await self.remote.cmd_actuatorBumpTest.set_start(
-                actuator=1, force=5.26, period=30.0
-            )
+            await self.remote.cmd_actuatorBumpTest.set_start(actuator=1, force=5.26, period=30.0)
 
             await asyncio.sleep(1.0)
             self.assertFalse(self.csc._is_bump_test_done())
@@ -1433,24 +1236,18 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             self.assertTrue(self.csc._is_bump_test_done())
 
     async def test_setHardpointList(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
             await self._set_summary_state(salobj.State.DISABLED)
 
             # Bad hardpoints
             with self.assertRaises(salobj.AckError):
-                await self.remote.cmd_setHardpointList.set_start(
-                    actuators=[5, 6, 7, 73, 75, 77]
-                )
+                await self.remote.cmd_setHardpointList.set_start(actuators=[5, 6, 7, 73, 75, 77])
             self.assertFalse(self.csc._is_overwritten_hardpoints)
 
             # Good hardpoints
             await self._flush_kafka_topic("evt_hardpointList")
-            await self.remote.cmd_setHardpointList.set_start(
-                actuators=[3, 13, 23, 73, 75, 77]
-            )
+            await self.remote.cmd_setHardpointList.set_start(actuators=[3, 13, 23, 73, 75, 77])
             self.assertTrue(self.csc._is_overwritten_hardpoints)
 
             await self.assert_next_sample(
@@ -1460,9 +1257,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_check_limit_switch(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             await self._flush_kafka_topic("evt_summaryState")
 
             # Enter the Disabled state to construct the connection
@@ -1486,9 +1281,7 @@ class TestM2CSC(salobj.BaseCscTestCase, unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_check_is_inclinometer_out_of_tma_range(self) -> None:
-        async with self.make_csc(
-            initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1
-        ):
+        async with self.make_csc(initial_state=salobj.State.STANDBY, config_dir=None, simulation_mode=1):
             self.csc._is_inclinometer_out_of_tma_range = True
             await self._set_summary_state(salobj.State.ENABLED)
 
