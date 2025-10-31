@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.19
+--------
+
+* Adapt the ruff format.
+
 v0.13.18
 --------
 

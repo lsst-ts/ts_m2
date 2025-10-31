@@ -122,7 +122,6 @@ class M2(salobj.ConfigurableCsc):
         simulation_mode: int = 0,
         verbose: bool = False,
     ) -> None:
-
         super().__init__(
             "MTM2",
             index=0,
@@ -148,9 +147,7 @@ class M2(salobj.ConfigurableCsc):
         )
         self.controller_cell.set_callback_process_event(self._process_event)
         self.controller_cell.set_callback_process_telemetry(self._process_telemetry)
-        self.controller_cell.set_callback_process_lost_connection(
-            self._process_lost_connection
-        )
+        self.controller_cell.set_callback_process_lost_connection(self._process_lost_connection)
 
         # Translator to translate the message from component for the SAL topic
         # to use
@@ -171,9 +168,7 @@ class M2(salobj.ConfigurableCsc):
         self._error_codes_bypass: set[int] = set()
 
         # Content of the error codes
-        self._content_error_codes = read_error_code_file(
-            self.config_dir / "error_code.tsv"
-        )
+        self._content_error_codes = read_error_code_file(self.config_dir / "error_code.tsv")
 
         # Software version of the M2 common module
         self.evt_softwareVersions.set(subsystemVersions=f"ts-m2com={__m2com_version__}")
@@ -221,9 +216,7 @@ class M2(salobj.ConfigurableCsc):
         self.log.debug(f"LUT directory in ts_config_mttcs: {self.config.lut_path}.")
         self.log.debug(f"Host in ts_config_mttcs: {self.config.host}.")
         self.log.debug(f"Command port in ts_config_mttcs: {self.config.port_command}.")
-        self.log.debug(
-            f"Telemetry port in ts_config_mttcs: {self.config.port_telemetry}."
-        )
+        self.log.debug(f"Telemetry port in ts_config_mttcs: {self.config.port_telemetry}.")
 
     async def close_tasks(self) -> None:
         await self.controller_cell.close_controller_and_mock_server()
@@ -237,9 +230,7 @@ class M2(salobj.ConfigurableCsc):
 
         # Run the mock server in the simulation mode
         # self.simulation_mode is the attribute from upstream: BaseCsc
-        if (self.summary_state == salobj.State.STANDBY) and (
-            self.controller_cell.mock_server is not None
-        ):
+        if (self.summary_state == salobj.State.STANDBY) and (self.controller_cell.mock_server is not None):
             await self.controller_cell.mock_server.close()
             self.controller_cell.mock_server = None
 
@@ -260,9 +251,7 @@ class M2(salobj.ConfigurableCsc):
         # Publish the SAL event
         if isinstance(message, dict):
             if message["id"] == "limitSwitchStatus":
-                await self._publish_limit_switch_status(
-                    message["retract"], message["extend"]
-                )
+                await self._publish_limit_switch_status(message["retract"], message["extend"])
             else:
                 await self._publish_message_by_sal(message)
 
@@ -298,18 +287,12 @@ class M2(salobj.ConfigurableCsc):
         """
 
         for limit_switch in limit_switch_retract:
-            await self._publish_message_by_sal(
-                dict(id="limitSwitchRetract", actuatorId=limit_switch)
-            )
+            await self._publish_message_by_sal(dict(id="limitSwitchRetract", actuatorId=limit_switch))
 
         for limit_switch in limit_switch_extend:
-            await self._publish_message_by_sal(
-                dict(id="limitSwitchExtend", actuatorId=limit_switch)
-            )
+            await self._publish_message_by_sal(dict(id="limitSwitchExtend", actuatorId=limit_switch))
 
-    async def _publish_message_by_sal(
-        self, message: dict, is_event: bool = True
-    ) -> None:
+    async def _publish_message_by_sal(self, message: dict, is_event: bool = True) -> None:
         """Publish the message from component by SAL.
 
         Parameters
@@ -505,9 +488,7 @@ class M2(salobj.ConfigurableCsc):
                 )
 
             case _:
-                self.log.warning(
-                    f"Unspecified event message: {message_name}, ignoring..."
-                )
+                self.log.warning(f"Unspecified event message: {message_name}, ignoring...")
 
     def _get_error_report(self, error_code: int) -> str:
         """Get the error report.
@@ -524,11 +505,7 @@ class M2(salobj.ConfigurableCsc):
         """
 
         code = str(error_code)
-        return (
-            self._content_error_codes[code][0]
-            if code in self._content_error_codes.keys()
-            else ""
-        )
+        return self._content_error_codes[code][0] if code in self._content_error_codes.keys() else ""
 
     async def _publish_sal_telemetry(self, message: dict) -> None:
         """Publish the SAL telemetry.
@@ -594,22 +571,14 @@ class M2(salobj.ConfigurableCsc):
                 )
 
                 # The normal elevation angle range is 0 to 90 degree on TMA.
-                is_inclinometer_in_range = (
-                    0.0 <= message["inclinometerProcessed"] <= 90.0
-                )
+                is_inclinometer_in_range = 0.0 <= message["inclinometerProcessed"] <= 90.0
 
                 if self._is_inclinometer_out_of_tma_range and is_inclinometer_in_range:
-                    self.log.info(
-                        "M2's processed inclinometer is back to the TMA range."
-                    )
+                    self.log.info("M2's processed inclinometer is back to the TMA range.")
                     self._is_inclinometer_out_of_tma_range = False
 
-                if (not self._is_inclinometer_out_of_tma_range) and (
-                    not is_inclinometer_in_range
-                ):
-                    self.log.info(
-                        "M2's processed inclinometer is out of the TMA range."
-                    )
+                if (not self._is_inclinometer_out_of_tma_range) and (not is_inclinometer_in_range):
+                    self.log.info("M2's processed inclinometer is out of the TMA range.")
                     self._is_inclinometer_out_of_tma_range = True
 
             case "inclinometerAngleTma":
@@ -696,9 +665,7 @@ class M2(salobj.ConfigurableCsc):
                 )
 
             case _:
-                self.log.warning(
-                    f"Unspecified telemetry message: {message_name}, ignoring..."
-                )
+                self.log.warning(f"Unspecified telemetry message: {message_name}, ignoring...")
 
     async def _process_telemetry(self, message: dict | None = None) -> None:
         """Process the telemetry from the M2 controller.
@@ -729,7 +696,6 @@ class M2(salobj.ConfigurableCsc):
         await super().begin_start(data)
 
     async def end_start(self, data: salobj.BaseMsgType) -> None:
-
         # Workaround of the mypy checking
         assert self.config is not None
 
@@ -744,9 +710,7 @@ class M2(salobj.ConfigurableCsc):
                 self.config.inclination_enable_comparison,
             )
         except Exception:
-            self.log.info(
-                "Failed to set the inclination source from the configuration. Skip it."
-            )
+            self.log.info("Failed to set the inclination source from the configuration. Skip it.")
 
         # Connect the M2 controller
         await self._connect_server(self.COMMAND_TIMEOUT)
@@ -838,9 +802,7 @@ class M2(salobj.ConfigurableCsc):
             True if the CSC is the commander. Otherwise, False.
         """
 
-        return self.evt_commandableByDDS.has_data and (
-            self.evt_commandableByDDS.data.state is True
-        )
+        return self.evt_commandableByDDS.has_data and (self.evt_commandableByDDS.data.state is True)
 
     async def begin_standby(self, data: salobj.BaseMsgType) -> None:
         await self.cmd_standby.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
@@ -861,18 +823,13 @@ class M2(salobj.ConfigurableCsc):
                 await self._clear_controller_errors()
 
             except Exception as error:
-                self.log.warning(
-                    f"Ignoring the error when clearing the controller's errors: {error}."
-                )
+                self.log.warning(f"Ignoring the error when clearing the controller's errors: {error}.")
 
         # Cleaning up
         if self.controller_cell.are_clients_connected() and self.is_csc_commander():
             # We need to check the closed-loop control mode and motor power
             # status if the interlock was triggered.
-            if (
-                self.controller_cell.closed_loop_control_mode
-                == MTM2.ClosedLoopControlMode.ClosedLoop
-            ):
+            if self.controller_cell.closed_loop_control_mode == MTM2.ClosedLoopControlMode.ClosedLoop:
                 await self._switch_force_balance_system(False)
 
             if (
@@ -895,9 +852,7 @@ class M2(salobj.ConfigurableCsc):
                 )
 
             except Exception as error:
-                self.log.warning(
-                    f"Ignoring the error when transitions to STANDBY state: {error}."
-                )
+                self.log.warning(f"Ignoring the error when transitions to STANDBY state: {error}.")
 
         # Disconnect from the server
         await self.controller_cell.close()
@@ -911,16 +866,11 @@ class M2(salobj.ConfigurableCsc):
         self._is_inclinometer_out_of_tma_range = False
 
     async def begin_enable(self, data: salobj.BaseMsgType) -> None:
-        await self.cmd_enable.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT_LONG_ENABLE
-        )
+        await self.cmd_enable.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT_LONG_ENABLE)
 
         # If the communication and motor powers are on, we know the GUI is
         # using the M2 already.
-        if (
-            self.controller_cell.is_powered_on_communication()
-            and self.controller_cell.is_powered_on_motor()
-        ):
+        if self.controller_cell.is_powered_on_communication() and self.controller_cell.is_powered_on_motor():
             self.log.info(
                 "The GUI should be controlling the M2 now. Skip the processes "
                 "to avoid to interrupt the actions of GUI."
@@ -932,10 +882,7 @@ class M2(salobj.ConfigurableCsc):
             )
 
             # Transition to the closed-loop control if possible
-            if (
-                self.controller_cell.closed_loop_control_mode
-                != MTM2.ClosedLoopControlMode.ClosedLoop
-            ):
+            if self.controller_cell.closed_loop_control_mode != MTM2.ClosedLoopControlMode.ClosedLoop:
                 if self.is_csc_commander():
                     self.log.info("Switch on the force balance system.")
                     await self._switch_force_balance_system(True)
@@ -950,9 +897,7 @@ class M2(salobj.ConfigurableCsc):
 
             # Run the task to monitor the telemetry
             self._is_monitoring_telemetry = True
-            self._task_monitor_telemetry = asyncio.create_task(
-                self._monitor_telemetry()
-            )
+            self._task_monitor_telemetry = asyncio.create_task(self._monitor_telemetry())
 
             self.system_is_ready = True
             return
@@ -972,9 +917,7 @@ class M2(salobj.ConfigurableCsc):
                 try:
                     await self._set_configuration_file(configuration_file)
                 except Exception:
-                    self.log.info(
-                        "Failed to set the configuration file from the configuration. Skip it."
-                    )
+                    self.log.info("Failed to set the configuration file from the configuration. Skip it.")
 
             # Set the hardpoints
             hardpoints = self.config.hardpoints.copy()
@@ -991,9 +934,7 @@ class M2(salobj.ConfigurableCsc):
                 try:
                     await self._set_hardpoint_list(hardpoints)
                 except Exception:
-                    self.log.info(
-                        "Failed to set the hardpoints from the configuration. Skip it."
-                    )
+                    self.log.info("Failed to set the hardpoints from the configuration. Skip it.")
 
         # Bypass the error code
         self.log.info("Bypass the error codes.")
@@ -1016,9 +957,7 @@ class M2(salobj.ConfigurableCsc):
         # TODO: Check with electrical engineer that I need to reset the cRIO
         # interlock or not in a latter time.
         if not self.controller_cell.is_powered_on_communication():
-            self.log.info(
-                "Reset the motor and communication power breakers and cRIO interlock bits."
-            )
+            self.log.info("Reset the motor and communication power breakers and cRIO interlock bits.")
             for idx in range(2, 5):
                 await self._execute_command(
                     self.controller_cell.set_bit_digital_status,
@@ -1086,10 +1025,7 @@ class M2(salobj.ConfigurableCsc):
 
             except RuntimeError as error:
                 error.add_note(
-                    (
-                        "Failed to power up motors, please check/reset the "
-                        "interlock or power system."
-                    )
+                    ("Failed to power up motors, please check/reset the interlock or power system.")
                 )
                 raise
 
@@ -1188,9 +1124,7 @@ class M2(salobj.ConfigurableCsc):
 
         # Check the file is available or not
         if file not in configuration_files:
-            raise ValueError(
-                f"Only the following files are allowed: {configuration_files}."
-            )
+            raise ValueError(f"Only the following files are allowed: {configuration_files}.")
 
         await self._execute_command(
             self.controller_cell.set_configuration_file,
@@ -1288,9 +1222,7 @@ class M2(salobj.ConfigurableCsc):
             )
 
         except Exception:
-            self.log.exception(
-                "Error when doing the basic cleanup and power off the motor."
-            )
+            self.log.exception("Error when doing the basic cleanup and power off the motor.")
 
     async def _switch_force_balance_system(self, status: bool) -> None:
         """Switch the force balance system.
@@ -1303,17 +1235,11 @@ class M2(salobj.ConfigurableCsc):
 
         # Do not allow the open-loop max limit in the closed-loop control
         if status is True:
-            await self._execute_command(
-                self.controller_cell.enable_open_loop_max_limit, False
-            )
+            await self._execute_command(self.controller_cell.enable_open_loop_max_limit, False)
 
-        await self._execute_command(
-            self.controller_cell.switch_force_balance_system, status
-        )
+        await self._execute_command(self.controller_cell.switch_force_balance_system, status)
 
-    async def _monitor_telemetry(
-        self, timeout: float = 180.0, period: float = 1.0
-    ) -> None:
+    async def _monitor_telemetry(self, timeout: float = 180.0, period: float = 1.0) -> None:
         """Monitor the telemetry regularly. If timeout, fail the system.
 
         Parameters
@@ -1331,7 +1257,6 @@ class M2(salobj.ConfigurableCsc):
 
         seq_num_current = 0
         while self._is_monitoring_telemetry:
-
             if (times_current <= 0) and self.disabled_or_enabled:
                 await self.fault(
                     code=ErrorCode.TelemetryTimeout,
@@ -1341,9 +1266,7 @@ class M2(salobj.ConfigurableCsc):
 
             # CSC should always get the power status when it connects to cell
             seq_num_new = (
-                self.tel_powerStatus.data.private_seqNum
-                if self.tel_powerStatus.has_data
-                else seq_num_current
+                self.tel_powerStatus.data.private_seqNum if self.tel_powerStatus.has_data else seq_num_current
             )
 
             if seq_num_current == seq_num_new:
@@ -1454,14 +1377,10 @@ class M2(salobj.ConfigurableCsc):
         total_force_tangent = np.array(applied_force_tangent)
 
         if self.tel_axialForce.has_data:
-            total_force_axial = total_force_axial + np.array(
-                self.tel_axialForce.data.measured
-            )
+            total_force_axial = total_force_axial + np.array(self.tel_axialForce.data.measured)
 
         if self.tel_tangentForce.has_data:
-            total_force_tangent = total_force_tangent + np.array(
-                self.tel_tangentForce.data.measured
-            )
+            total_force_tangent = total_force_tangent + np.array(self.tel_tangentForce.data.measured)
 
         max_force_axial = np.max(np.abs(total_force_axial))
         max_force_tangent = np.max(np.abs(total_force_tangent))
@@ -1474,14 +1393,10 @@ class M2(salobj.ConfigurableCsc):
         limit_tangent = LIMIT_FORCE_TANGENT_CLOSED_LOOP - applied_force_offset
 
         if max_force_axial >= limit_axial:
-            raise ValueError(
-                f"Max axial force ({max_force_axial:.2f} N) >= {limit_axial} N."
-            )
+            raise ValueError(f"Max axial force ({max_force_axial:.2f} N) >= {limit_axial} N.")
 
         if max_force_tangent >= limit_tangent:
-            raise ValueError(
-                f"Max tangent force ({max_force_tangent:.2f} N) >= {limit_tangent} N."
-            )
+            raise ValueError(f"Max tangent force ({max_force_tangent:.2f} N) >= {limit_tangent} N.")
 
     async def do_positionMirror(self, data: salobj.BaseMsgType) -> None:
         """Position Mirror.
@@ -1494,9 +1409,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_closed_loop_control_and_allow_motion()
 
-        await self.cmd_positionMirror.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_positionMirror.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         await self._execute_command(
             self.controller_cell.position_mirror,
@@ -1519,9 +1432,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_closed_loop_control_and_allow_motion()
 
-        await self.cmd_resetForceOffsets.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_resetForceOffsets.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         await self._execute_command(
             self.controller_cell.reset_force_offsets,
@@ -1538,9 +1449,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_enabled_and_open_loop_control()
 
-        await self.cmd_resetActuatorSteps.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_resetActuatorSteps.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         await self._execute_command(
             self.controller_cell.command_actuator,
@@ -1593,9 +1502,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_disabled()
 
-        await self.cmd_selectInclinationSource.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_selectInclinationSource.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         self._select_inclination_source(
             MTM2.InclinationTelemetrySource(data.source),
@@ -1630,9 +1537,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_disabled()
 
-        await self.cmd_enableLutTemperature.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_enableLutTemperature.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         self.controller_cell.control_parameters["enable_lut_temperature"] = data.status
 
@@ -1650,9 +1555,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_disabled()
 
-        await self.cmd_setTemperatureOffset.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_setTemperatureOffset.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         await self._execute_command(
             self.controller_cell.set_temperature_offset,
@@ -1672,9 +1575,7 @@ class M2(salobj.ConfigurableCsc):
 
         self.assert_enabled()
 
-        await self.cmd_switchForceBalanceSystem.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_switchForceBalanceSystem.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         await self._switch_force_balance_system(data.status)
 
@@ -1698,9 +1599,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_disabled()
 
-        await self.cmd_bypassErrorCode.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_bypassErrorCode.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         error_code = int(data.code)
         available_error_codes = self.controller_cell.error_handler.list_code_total
@@ -1723,9 +1622,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_disabled()
 
-        await self.cmd_resetEnabledFaultsMask.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_resetEnabledFaultsMask.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         self._error_codes_bypass.clear()
 
@@ -1749,9 +1646,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_disabled()
 
-        await self.cmd_setConfigurationFile.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_setConfigurationFile.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         await self._set_configuration_file(data.file)
 
@@ -1768,13 +1663,9 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_enabled_and_open_loop_control()
 
-        await self.cmd_enableOpenLoopMaxLimit.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_enableOpenLoopMaxLimit.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
-        await self._execute_command(
-            self.controller_cell.enable_open_loop_max_limit, data.status
-        )
+        await self._execute_command(self.controller_cell.enable_open_loop_max_limit, data.status)
 
     async def do_moveActuator(self, data: salobj.BaseMsgType) -> None:
         """Move the actuator in open-loop control.
@@ -1798,9 +1689,7 @@ class M2(salobj.ConfigurableCsc):
         displacement = data.displacement * 1e-3
         step = int(data.step)
         if (displacement != 0.0) and (step != 0):
-            raise ValueError(
-                "You can only move the displacement or step in a single time."
-            )
+            raise ValueError("You can only move the displacement or step in a single time.")
 
         actuators = [int(data.actuator)]
         if displacement != 0.0:
@@ -1832,19 +1721,13 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_closed_loop_control_and_allow_motion()
 
-        await self.cmd_actuatorBumpTest.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_actuatorBumpTest.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         self._task_bump_test = asyncio.create_task(
-            self._exercise_actuator_bump_test(
-                int(data.actuator), data.force, data.period
-            )
+            self._exercise_actuator_bump_test(int(data.actuator), data.force, data.period)
         )
 
-    async def _exercise_actuator_bump_test(
-        self, actuator: int, force: float, period: float
-    ) -> None:
+    async def _exercise_actuator_bump_test(self, actuator: int, force: float, period: float) -> None:
         """Exercise the actuator bump test in the closed-loop control, which is
         performed at +/push and -/pull directions.
 
@@ -1871,9 +1754,7 @@ class M2(salobj.ConfigurableCsc):
 
         except (Exception, asyncio.CancelledError):
             # Publish the event that the bump test fails
-            await self._publish_status_bump_test(
-                actuator, MTM2.BumpTest.FAILED_NONTESTEDPROBLEM
-            )
+            await self._publish_status_bump_test(actuator, MTM2.BumpTest.FAILED_NONTESTEDPROBLEM)
 
             self.log.debug("Bump test task is failed or cancelled.")
 
@@ -1915,13 +1796,9 @@ class M2(salobj.ConfigurableCsc):
         # Apply the force and publish the related event
         is_positive_force = force >= 0.0
         if is_positive_force:
-            await self._publish_status_bump_test(
-                actuator, MTM2.BumpTest.TESTINGPOSITIVE
-            )
+            await self._publish_status_bump_test(actuator, MTM2.BumpTest.TESTINGPOSITIVE)
         else:
-            await self._publish_status_bump_test(
-                actuator, MTM2.BumpTest.TESTINGNEGATIVE
-            )
+            await self._publish_status_bump_test(actuator, MTM2.BumpTest.TESTINGNEGATIVE)
         await self._execute_command(
             self.controller_cell.apply_forces,
             force_axial,
@@ -1930,20 +1807,14 @@ class M2(salobj.ConfigurableCsc):
 
         # Wait for some time and publish the related event
         if is_positive_force:
-            await self._publish_status_bump_test(
-                actuator, MTM2.BumpTest.TESTINGPOSITIVEWAIT
-            )
+            await self._publish_status_bump_test(actuator, MTM2.BumpTest.TESTINGPOSITIVEWAIT)
         else:
-            await self._publish_status_bump_test(
-                actuator, MTM2.BumpTest.TESTINGNEGATIVEWAIT
-            )
+            await self._publish_status_bump_test(actuator, MTM2.BumpTest.TESTINGNEGATIVEWAIT)
         await asyncio.sleep(period)
 
         # Check the applied force with the first digit accuracy
         data_force_applied = (
-            self.tel_axialForce.data.applied
-            if is_axial
-            else self.tel_tangentForce.data.applied
+            self.tel_axialForce.data.applied if is_axial else self.tel_tangentForce.data.applied
         )
         is_matched = round(data_force_applied[actuator_bump], 1) == round(force, 1)
 
@@ -1953,15 +1824,11 @@ class M2(salobj.ConfigurableCsc):
         )
 
         if not is_matched:
-            raise RuntimeError(
-                "Controller's applied force does not match the request. Abort..."
-            )
+            raise RuntimeError("Controller's applied force does not match the request. Abort...")
 
         await asyncio.sleep(period)
 
-    async def _publish_status_bump_test(
-        self, actuator: int, status: MTM2.BumpTest
-    ) -> None:
+    async def _publish_status_bump_test(self, actuator: int, status: MTM2.BumpTest) -> None:
         """Publish the status of actuator bump test.
 
         Parameters
@@ -1972,9 +1839,7 @@ class M2(salobj.ConfigurableCsc):
             Status of the actuator bump test.
         """
 
-        await self.evt_actuatorBumpTestStatus.set_write(
-            actuator=actuator, status=status.value
-        )
+        await self.evt_actuatorBumpTestStatus.set_write(actuator=actuator, status=status.value)
 
     async def do_killActuatorBumpTest(self, data: salobj.BaseMsgType) -> None:
         """Kill the running actuator bump test in the closed-loop control.
@@ -1990,9 +1855,7 @@ class M2(salobj.ConfigurableCsc):
         if self._is_bump_test_done():
             return
 
-        await self.cmd_killActuatorBumpTest.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_killActuatorBumpTest.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         self.log.info("Killing bump test.")
 
@@ -2010,9 +1873,7 @@ class M2(salobj.ConfigurableCsc):
 
         self._assert_disabled()
 
-        await self.cmd_setHardpointList.ack_in_progress(
-            data, timeout=self.COMMAND_TIMEOUT
-        )
+        await self.cmd_setHardpointList.ack_in_progress(data, timeout=self.COMMAND_TIMEOUT)
 
         await self._set_hardpoint_list(data.actuators)
 
@@ -2111,9 +1972,7 @@ class M2(salobj.ConfigurableCsc):
         )
 
     @classmethod
-    def add_kwargs_from_args(
-        cls, args: argparse.Namespace, kwargs: typing.Dict[str, typing.Any]
-    ) -> None:
+    def add_kwargs_from_args(cls, args: argparse.Namespace, kwargs: typing.Dict[str, typing.Any]) -> None:
         super(M2, cls).add_kwargs_from_args(args, kwargs)
 
         kwargs["host"] = args.host
