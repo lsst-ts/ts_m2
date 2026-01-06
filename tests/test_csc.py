@@ -23,6 +23,7 @@ import asyncio
 import unittest
 
 import numpy as np
+
 from lsst.ts import salobj
 from lsst.ts.m2 import M2
 from lsst.ts.m2com import (
