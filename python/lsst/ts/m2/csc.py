@@ -27,6 +27,7 @@ import types
 import typing
 
 import numpy as np
+
 from lsst.ts import salobj
 from lsst.ts.m2com import (
     DEFAULT_ENABLED_FAULTS_MASK,
@@ -41,9 +42,11 @@ from lsst.ts.m2com import (
     CommandActuator,
     ControllerCell,
     DigitalOutputStatus,
+    check_hardpoints,
+    read_error_code_file,
+    read_yaml_file,
 )
 from lsst.ts.m2com import __version__ as __m2com_version__
-from lsst.ts.m2com import check_hardpoints, read_error_code_file, read_yaml_file
 from lsst.ts.utils import make_done_future
 from lsst.ts.xml.enums import MTM2
 

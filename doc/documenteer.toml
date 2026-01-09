@@ -1,0 +1,19 @@
+[project]
+# The title of the index page.
+title = "M2"
+# Copyright information displayed on the footer of each page
+copyright = "2019-2026 Association of Universities for Research in Astronomy, Inc. (AURA)"
+
+[project.python]
+# pyproject.toml package name, fills out unseen metadata
+package = "ts_m2" # should match the name that importlib.metadata uses/pyproject.toml name
+documentation_url_key = "documentation"
+github_url_key = "repository"
+
+[sphinx]
+extensions = ["sphinx-jsonschema"]
+
+[sphinx.intersphinx.projects]
+ts-xml = "https://ts-xml.lsst.io"
+ts-salobj = "https://ts-salobj.lsst.io"
+python = "https://docs.python.org/3.13/"
