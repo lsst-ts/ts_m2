@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.21
+--------
+
+* Remove the **base** in ``ts_m2.table`` file.
+
 v0.13.20
 --------
 
