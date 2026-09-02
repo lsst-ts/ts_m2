@@ -2,6 +2,11 @@
 Version History
 ===============
 
+v0.13.22
+--------
+
+* Add and update the license header.
+
 v0.13.21
 --------
 
