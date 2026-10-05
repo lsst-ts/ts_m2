@@ -2,6 +2,21 @@
 Version History
 ===============
 
+v0.13.23
+--------
+
+* Add the ``local_scheme="no-local-version"`` to the **setup.py**.
+
+v0.13.22
+--------
+
+* Add and update the license header.
+
+v0.13.21
+--------
+
+* Remove the **base** in ``ts_m2.table`` file.
+
 v0.13.20
 --------
 

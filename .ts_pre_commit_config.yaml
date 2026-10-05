@@ -7,3 +7,4 @@ mypy: true
 clang-format: true
 format-xmllint: true
 ruff: true
+insert-license: true

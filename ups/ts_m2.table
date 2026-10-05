@@ -2,7 +2,6 @@
 # - Any package whose API is used directly should be listed explicitly.
 # - Common third-party packages can be assumed to be recursively included by
 #   the "base" package.
-setupRequired(base)
 setupRequired(ts_salobj)
 setupRequired(ts_xml)
 setupRequired(ts_config_mttcs)
